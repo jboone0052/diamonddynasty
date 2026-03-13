@@ -8,7 +8,9 @@
   "overrides": {
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "react-native": "0.81.5"
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "5.6.2",
+    "react-native-screens": "4.16.0"
   },
   "scripts": {
     "dev": "npm run dev -w apps/game-app",
@@ -17,5 +19,8 @@
     "android": "npm run android -w apps/game-app",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test -w packages/game-core"
+  },
+  "dependencies": {
+    "is-arrayish": "^0.3.4"
   }
 }
