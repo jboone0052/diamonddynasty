@@ -1,4 +1,5 @@
 export const economyConfig = {
+  gamesPerSeries: 3,
   baseSponsorRevenueMonthly: 12000,
   baseTicketPrice: 12,
   averagePayrollPerPlayerMonthly: 2200,
