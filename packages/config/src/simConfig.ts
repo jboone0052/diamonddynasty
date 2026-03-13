@@ -9,5 +9,11 @@ export const simConfig = {
     control: 0.35,
     movement: 0.25,
   },
+  defenseWeight: 0.3,
   randomnessRange: 15,
+  walkThreshold: 30,
+  baseInjuryChance: 0.003,
+  fatigueIncreaseHitters: 4,
+  fatigueIncreasePitchers: 12,
+  weeklyRecovery: 8,
 };

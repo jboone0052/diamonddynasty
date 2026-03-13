@@ -12,3 +12,8 @@ export function randomInt(seed: string, step: number, min: number, max: number):
   const value = nextSeededValue(seed, step);
   return Math.floor(min + value * (max - min + 1));
 }
+
+export function randomFloat(seed: string, step: number, min = 0, max = 1): number {
+  const value = nextSeededValue(seed, step);
+  return min + value * (max - min);
+}
