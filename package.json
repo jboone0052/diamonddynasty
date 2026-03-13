@@ -5,6 +5,11 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5"
+  },
   "scripts": {
     "dev": "npm run dev -w apps/game-app",
     "web": "npm run web -w apps/game-app",
