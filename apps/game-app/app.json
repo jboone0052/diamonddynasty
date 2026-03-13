@@ -1,5 +1,14 @@
 {
-  "plugins": [
-    "expo-router"
-  ]
+  "expo": {
+    "name": "Diamond Dynasty",
+    "slug": "diamond-dynasty",
+    "scheme": "diamonddynasty",
+    "plugins": [
+      "expo-router"
+    ],
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    }
+  }
 }
