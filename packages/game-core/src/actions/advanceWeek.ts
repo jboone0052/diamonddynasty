@@ -328,11 +328,12 @@ function processFinances(state: GameState, game: ScheduledGame) {
   const result = game.result!;
   const homeFinance = state.finances[game.homeTeamId];
   const awayFinance = state.finances[game.awayTeamId];
-  const ticketRevenue = result.attendance * homeFinance.ticketPrice;
-  const merchandiseRevenue = Math.round(result.attendance * (homeFinance.merchandiseStrength / 100) * 3);
+  const seriesGames = Math.max(1, economyConfig.gamesPerSeries ?? 1);
+  const ticketRevenue = result.attendance * homeFinance.ticketPrice * seriesGames;
+  const merchandiseRevenue = Math.round(result.attendance * (homeFinance.merchandiseStrength / 100) * 3 * seriesGames);
   homeFinance.lastMonthRevenueBreakdown.ticketSales += ticketRevenue;
   homeFinance.lastMonthRevenueBreakdown.merchandise += merchandiseRevenue;
-  awayFinance.lastMonthExpenseBreakdown.travel += economyConfig.travelCostPerRoadGame;
+  awayFinance.lastMonthExpenseBreakdown.travel += economyConfig.travelCostPerRoadGame * seriesGames;
 }
 
 function settleWeeklyLedger(state: GameState) {

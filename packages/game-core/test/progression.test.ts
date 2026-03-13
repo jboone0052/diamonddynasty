@@ -1,3 +1,4 @@
+import { economyConfig } from "@baseball-sim/config";
 import { describe, expect, it } from "vitest";
 import {
   advanceWeek,
@@ -15,6 +16,18 @@ describe("season progression", () => {
     const completed = Object.values(next.schedule).filter((scheduledGame) => scheduledGame.week === 1 && scheduledGame.status === "completed");
     expect(completed).toHaveLength(4);
     expect(next.world.currentWeek).toBe(2);
+  });
+
+
+  it("records ticket income for each completed home game", () => {
+    const game = createNewGame();
+    const next = advanceWeek(game);
+    const completedHomeGame = Object.values(next.schedule).find((scheduledGame) => scheduledGame.week === 1 && scheduledGame.status === "completed")!;
+    const finance = next.finances[completedHomeGame.homeTeamId];
+    const expectedTicketRevenue = completedHomeGame.result!.attendance * finance.ticketPrice * economyConfig.gamesPerSeries;
+
+    expect(finance.lastMonthRevenueBreakdown.ticketSales).toBe(expectedTicketRevenue);
+    expect(finance.lastMonthRevenueBreakdown.ticketSales).toBeGreaterThan(0);
   });
 
   it("can run to season completion and produce a promotion summary", () => {
