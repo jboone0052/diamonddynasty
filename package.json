@@ -1,0 +1,16 @@
+{
+  "name": "baseball-sim-starter",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/game-app",
+    "web": "npm run web -w apps/game-app",
+    "ios": "npm run ios -w apps/game-app",
+    "android": "npm run android -w apps/game-app",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test -w packages/game-core"
+  }
+}

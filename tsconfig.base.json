@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@baseball-sim/game-core": ["packages/game-core/src/index.ts"],
+      "@baseball-sim/ui": ["packages/ui/src/index.ts"],
+      "@baseball-sim/content": ["packages/content/src/index.ts"],
+      "@baseball-sim/config": ["packages/config/src/index.ts"]
+    }
+  }
+}
