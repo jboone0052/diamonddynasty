@@ -19,6 +19,7 @@ function createEmptyStats() {
     doubles: 0,
     triples: 0,
     homeRuns: 0,
+    battingAverage: 0,
     stolenBases: 0,
     inningsPitched: 0,
     wins: 0,

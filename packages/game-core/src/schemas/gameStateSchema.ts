@@ -125,6 +125,7 @@ export const PlayerSeasonStatsSchema = z.object({
   doubles: z.number().int().min(0),
   triples: z.number().int().min(0),
   homeRuns: z.number().int().min(0),
+  battingAverage: z.number().min(0).max(1),
   stolenBases: z.number().int().min(0),
   inningsPitched: z.number().min(0),
   wins: z.number().int().min(0),

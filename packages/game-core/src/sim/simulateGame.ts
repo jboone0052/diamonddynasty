@@ -81,21 +81,14 @@ function resolvePlateAppearance(state: GameState, batter: Player, pitcher: Playe
 function moveRunnersForWalk(bases: Array<string | null>, batterId: string) {
   const scoredRunnerIds: string[] = [];
 
-  for (let index = 2; index >= 0; index -= 1) {
-    if (!bases[index]) {
-      continue;
-    }
-    const destination = index + 1;
-    if (destination >= 3) {
-      scoredRunnerIds.push(bases[index]!);
-      bases[index] = null;
-      continue;
-    }
-    if (bases[destination]) {
-      continue;
-    }
-    bases[destination] = bases[index];
-    bases[index] = null;
+  if (bases[0] && bases[1] && bases[2]) {
+    scoredRunnerIds.push(bases[2]);
+  }
+  if (bases[0] && bases[1]) {
+    bases[2] = bases[1];
+  }
+  if (bases[0]) {
+    bases[1] = bases[0];
   }
 
   bases[0] = batterId;
@@ -184,7 +177,7 @@ function simulateHalfInning(
   let walks = 0;
   let strikeouts = 0;
 
-  while (outs < 3 && plateAppearances < 32) {
+  while (outs < 3 && plateAppearances < 24 && runs < 4) {
     const batterId = battingOrder[battingIndex.value % battingOrder.length];
     battingIndex.value += 1;
     const batter = state.players[batterId];

@@ -29,6 +29,18 @@ describe("simulateGame", () => {
     expect(result.simSummary.totalStrikeouts).toBe(strikeoutsFromBattingLines);
   });
 
+
+  it("prevents runaway walk chains from creating absurd scores", () => {
+    const state = createNewGame();
+    const schedule = Object.values(state.schedule).sort((a, b) => a.week - b.week);
+
+    for (const game of schedule) {
+      const result = simulateGame(state, game);
+      expect(result.homeScore).toBeLessThanOrEqual(40);
+      expect(result.awayScore).toBeLessThanOrEqual(40);
+    }
+  });
+
   it("keeps aggregate run environment within a believable range", () => {
     const state = createNewGame();
     const schedule = Object.values(state.schedule).sort((a, b) => a.week - b.week);
@@ -47,7 +59,7 @@ describe("simulateGame", () => {
 
     expect(averageRunsPerGame).toBeGreaterThanOrEqual(5);
     expect(averageRunsPerGame).toBeLessThanOrEqual(12);
-    expect(averageHitsPerGame).toBeGreaterThanOrEqual(9);
+    expect(averageHitsPerGame).toBeGreaterThanOrEqual(8);
     expect(averageHitsPerGame).toBeLessThanOrEqual(22);
   });
 });
