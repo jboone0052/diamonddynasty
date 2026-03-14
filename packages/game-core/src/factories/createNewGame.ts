@@ -1,7 +1,7 @@
 import { economyConfig, worldConfig } from "@baseball-sim/config";
 import { introStory, startingLeague, startingTeams } from "@baseball-sim/content";
 import { createPlayer } from "./createPlayer";
-import { Contract, GameState, LeagueStandings, ScheduledGame, Team } from "../types/gameState";
+import { Contract, GameState, LeagueStandings, PlayerPosition, ScheduledGame, Team } from "../types/gameState";
 
 
 const FIXED_ROSTER_POSITIONS: ("SP" | "RP" | "C" | "1B" | "2B" | "3B" | "SS" | "LF" | "CF" | "RF" | "DH")[] = [
@@ -23,6 +23,13 @@ const FIXED_ROSTER_POSITIONS: ("SP" | "RP" | "C" | "1B" | "2B" | "3B" | "SS" | "
   "RP",
   "RP",
   "RP",
+];
+
+const RESERVE_BLUEPRINTS: Array<{ primary: PlayerPosition; secondary: PlayerPosition[] }> = [
+  { primary: "C", secondary: ["1B", "DH"] },
+  { primary: "2B", secondary: ["1B", "3B", "SS"] },
+  { primary: "CF", secondary: ["LF", "RF", "DH"] },
+  { primary: "RP", secondary: ["SP"] },
 ];
 
 function addDays(date: string, days: number) {
@@ -174,12 +181,17 @@ export function createNewGame(): GameState {
     for (let i = 0; i < worldConfig.rosterSize; i += 1) {
       const playerId = `player_${String(playerCounter).padStart(5, "0")}`;
       let stepOffset = playerCounter * 43;
-      const forcedPrimaryPosition = FIXED_ROSTER_POSITIONS[i];
+      const reserveBlueprint = RESERVE_BLUEPRINTS[i - FIXED_ROSTER_POSITIONS.length];
+      const forcedPrimaryPosition = FIXED_ROSTER_POSITIONS[i] ?? reserveBlueprint?.primary;
       let player = createPlayer(playerId, seed, stepOffset, base.id, forcedPrimaryPosition);
 
       while (usedFullNames.has(player.fullName)) {
         stepOffset += 1;
         player = createPlayer(playerId, seed, stepOffset, base.id, forcedPrimaryPosition);
+      }
+
+      if (reserveBlueprint) {
+        player.secondaryPositions = reserveBlueprint.secondary;
       }
 
       usedFullNames.add(player.fullName);
