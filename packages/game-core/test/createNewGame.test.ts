@@ -31,4 +31,22 @@ describe("createNewGame", () => {
       expect(new Set(fullNames).size).toBe(fullNames.length);
     }
   });
+  it("assigns one starter per defensive position in the initial lineup", () => {
+    const game = createNewGame();
+
+    for (const team of Object.values(game.teams)) {
+      const assignments = team.activeLineup.defensiveAssignments;
+      expect(game.players[assignments.C].primaryPosition).toBe("C");
+      expect(game.players[assignments["1B"]].primaryPosition).toBe("1B");
+      expect(game.players[assignments["2B"]].primaryPosition).toBe("2B");
+      expect(game.players[assignments["3B"]].primaryPosition).toBe("3B");
+      expect(game.players[assignments.SS].primaryPosition).toBe("SS");
+      expect(game.players[assignments.LF].primaryPosition).toBe("LF");
+      expect(game.players[assignments.CF].primaryPosition).toBe("CF");
+      expect(game.players[assignments.RF].primaryPosition).toBe("RF");
+      expect(game.players[assignments.DH].primaryPosition).toBe("DH");
+      expect(game.players[assignments.P].primaryPosition).toBe("SP");
+    }
+  });
+
 });

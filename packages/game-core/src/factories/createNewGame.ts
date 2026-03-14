@@ -3,6 +3,28 @@ import { introStory, startingLeague, startingTeams } from "@baseball-sim/content
 import { createPlayer } from "./createPlayer";
 import { Contract, GameState, LeagueStandings, ScheduledGame, Team } from "../types/gameState";
 
+
+const FIXED_ROSTER_POSITIONS: ("SP" | "RP" | "C" | "1B" | "2B" | "3B" | "SS" | "LF" | "CF" | "RF" | "DH")[] = [
+  "C",
+  "1B",
+  "2B",
+  "3B",
+  "SS",
+  "LF",
+  "CF",
+  "RF",
+  "DH",
+  "SP",
+  "SP",
+  "SP",
+  "SP",
+  "SP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+];
+
 function addDays(date: string, days: number) {
   const next = new Date(`${date}T00:00:00Z`);
   next.setUTCDate(next.getUTCDate() + days);
@@ -152,11 +174,12 @@ export function createNewGame(): GameState {
     for (let i = 0; i < worldConfig.rosterSize; i += 1) {
       const playerId = `player_${String(playerCounter).padStart(5, "0")}`;
       let stepOffset = playerCounter * 43;
-      let player = createPlayer(playerId, seed, stepOffset, base.id);
+      const forcedPrimaryPosition = FIXED_ROSTER_POSITIONS[i];
+      let player = createPlayer(playerId, seed, stepOffset, base.id, forcedPrimaryPosition);
 
       while (usedFullNames.has(player.fullName)) {
         stepOffset += 1;
-        player = createPlayer(playerId, seed, stepOffset, base.id);
+        player = createPlayer(playerId, seed, stepOffset, base.id, forcedPrimaryPosition);
       }
 
       usedFullNames.add(player.fullName);
