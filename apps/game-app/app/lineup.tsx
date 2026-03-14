@@ -20,7 +20,10 @@ export default function LineupScreen() {
         const benchPlayerIds = team.rosterPlayerIds.filter((id) => {
           if (team.activeLineup.battingOrderPlayerIds.includes(id)) return false;
           const benchPlayer = game.players[id];
-          return benchPlayer.primaryPosition === player.primaryPosition;
+          return (
+            benchPlayer.primaryPosition === player.primaryPosition
+            || benchPlayer.secondaryPositions.includes(player.primaryPosition)
+          );
         });
         return (
           <View key={playerId} style={{ borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 }}>
