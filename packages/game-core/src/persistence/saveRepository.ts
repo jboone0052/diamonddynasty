@@ -58,7 +58,7 @@ function createDefaultStorage(): SaveStorageAdapter {
 }
 
 export function serializeGameState(state: GameState): string {
-  return JSON.stringify(state, null, 2);
+  return JSON.stringify(state);
 }
 
 export function migrateGameState(save: unknown): GameState {
@@ -126,6 +126,17 @@ export function createLocalSaveRepository(storage: SaveStorageAdapter = createDe
       await storage.removeItem(`${SAVE_PREFIX}${saveId}`);
       const entries = await loadSaveIndex(storage);
       await writeSaveIndex(storage, entries.filter((entry) => entry.id !== saveId));
+    },
+    async clearAll() {
+      const entries = await loadSaveIndex(storage);
+      const uniqueSaveIds = new Set(entries.map((entry) => entry.id));
+      uniqueSaveIds.add("autosave");
+
+      for (const saveId of uniqueSaveIds) {
+        await storage.removeItem(`${SAVE_PREFIX}${saveId}`);
+      }
+
+      await storage.removeItem(SAVE_INDEX_KEY);
     },
   };
 }

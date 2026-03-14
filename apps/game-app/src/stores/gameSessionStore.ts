@@ -46,6 +46,7 @@ type GameSessionState = {
   createNewGame: () => Promise<void>;
   loadSave: (saveId: string) => Promise<void>;
   saveGame: () => Promise<void>;
+  clearLocalStorage: () => Promise<void>;
   advanceWeek: () => Promise<void>;
   moveLineupPlayer: (fromIndex: number, toIndex: number) => void;
   replaceLineupPlayer: (lineupIndex: number, playerId: string) => void;
@@ -104,6 +105,15 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
       set({ selectedSaveId: saveId, saves, loading: false });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to save game." });
+    }
+  },
+  clearLocalStorage: async () => {
+    set({ loading: true, error: null });
+    try {
+      await repository.clearAll();
+      set({ game: null, saves: [], selectedSaveId: null, loading: false });
+    } catch (error) {
+      set({ loading: false, error: error instanceof Error ? error.message : "Failed to clear local storage." });
     }
   },
   advanceWeek: async () => {
