@@ -134,8 +134,14 @@ function buildTeam(base: (typeof startingTeams)[number], userTeamId: string, ros
   };
 }
 
-export function createNewGame(): GameState {
-  const seed = "starter-seed";
+function createInitialSeed() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.floor(Math.random() * 1_000_000).toString(36)}`;
+}
+
+export function createNewGame(seed = createInitialSeed()): GameState {
   const userTeamId = "team_harbor_city";
   const now = new Date().toISOString();
 

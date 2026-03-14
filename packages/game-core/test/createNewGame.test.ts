@@ -65,4 +65,18 @@ describe("createNewGame", () => {
     }
   });
 
+  it("uses a unique default RNG seed for each new save", () => {
+    const first = createNewGame();
+    const second = createNewGame();
+
+    expect(first.rng.seed).not.toBe(second.rng.seed);
+    expect(first.rng.seed.length).toBeGreaterThan(0);
+    expect(second.rng.seed.length).toBeGreaterThan(0);
+  });
+
+  it("accepts a caller-provided RNG seed", () => {
+    const game = createNewGame("fixed-seed-for-test");
+    expect(game.rng.seed).toBe("fixed-seed-for-test");
+  });
+
 });
