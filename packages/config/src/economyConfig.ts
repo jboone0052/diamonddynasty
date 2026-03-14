@@ -10,4 +10,8 @@ export const economyConfig = {
   baseMerchandiseStrength: 35,
   debtServiceRateWeekly: 0.0025,
   travelCostPerRoadGame: 350,
+  stadiumExpansionSeatsPerUpgrade: 250,
+  stadiumExpansionCostPerSeat: 160,
+  stadiumExpansionUpkeepPerSeatMonthly: 1,
+  stadiumExpansionCostGrowthPerLevel: 0.15,
 };
