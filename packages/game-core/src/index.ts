@@ -7,5 +7,6 @@ export * from "./actions/setLineup";
 export * from "./actions/setRotation";
 export * from "./actions/setTicketPrice";
 export * from "./actions/markMailRead";
+export * from "./actions/expandStadiumCapacity";
 export * from "./persistence/saveRepository";
 export * from "./queries";

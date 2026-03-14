@@ -4,6 +4,7 @@ import {
   advanceWeek as advanceWeekAction,
   createLocalSaveRepository,
   createNewGame as createNewGameAction,
+  expandStadiumCapacity as expandStadiumCapacityAction,
   GameState,
   markMailRead as markMailReadAction,
   setLineup as setLineupAction,
@@ -52,6 +53,7 @@ type GameSessionState = {
   replaceLineupPlayer: (lineupIndex: number, playerId: string) => void;
   moveRotationPlayer: (fromIndex: number, toIndex: number) => void;
   adjustTicketPrice: (delta: number) => void;
+  expandStadiumCapacity: () => void;
   markMessageRead: (messageId: string) => void;
 };
 
@@ -181,6 +183,16 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
     const teamId = current.world.userTeamId;
     const currentPrice = current.finances[teamId].ticketPrice;
     set({ game: setTicketPriceAction(current, teamId, currentPrice + delta) });
+  },
+  expandStadiumCapacity: () => {
+    const current = get().game;
+    if (!current) return;
+    const teamId = current.world.userTeamId;
+    try {
+      set({ game: expandStadiumCapacityAction(current, teamId), error: null });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Failed to expand stadium." });
+    }
   },
   markMessageRead: (messageId) => {
     const current = get().game;
