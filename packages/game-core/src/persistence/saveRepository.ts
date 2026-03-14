@@ -58,7 +58,7 @@ function createDefaultStorage(): SaveStorageAdapter {
 }
 
 export function serializeGameState(state: GameState): string {
-  return JSON.stringify(state, null, 2);
+  return JSON.stringify(state);
 }
 
 export function migrateGameState(save: unknown): GameState {
