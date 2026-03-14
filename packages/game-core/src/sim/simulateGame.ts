@@ -311,8 +311,9 @@ function simulateHalfInning(
     maybeStealBase(state, bases, battingLines);
   }
 
-  if (outs < 3) {
-    outs = 3;
+  while (outs < 3) {
+    outs += 1;
+    playByPlay.push(`${half} ${inning}: Automatic out to end the inning. ${outs} out(s).`);
   }
 
   incrementPitchingInnings(pitchingLine, 3);
