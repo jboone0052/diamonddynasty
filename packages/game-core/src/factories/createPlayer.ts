@@ -32,10 +32,10 @@ function createEmptyStats() {
   };
 }
 
-export function createPlayer(id: string, seed: string, stepOffset: number, teamId?: string): Player {
+export function createPlayer(id: string, seed: string, stepOffset: number, teamId?: string, primaryPositionOverride?: PlayerPosition): Player {
   const firstName = FIRST_NAMES[randomInt(seed, stepOffset + 1, 0, FIRST_NAMES.length - 1)];
   const lastName = LAST_NAMES[randomInt(seed, stepOffset + 2, 0, LAST_NAMES.length - 1)];
-  const primaryPosition = POSITIONS[randomInt(seed, stepOffset + 3, 0, POSITIONS.length - 1)];
+  const primaryPosition = primaryPositionOverride ?? POSITIONS[randomInt(seed, stepOffset + 3, 0, POSITIONS.length - 1)];
   const overall = randomInt(seed, stepOffset + 4, 38, 68);
   const potential = Math.min(99, overall + randomInt(seed, stepOffset + 5, 5, 22));
   const secondaryPositions = POSITIONS.filter((position) => position !== primaryPosition).slice(0, randomInt(seed, stepOffset + 6, 1, 2));
