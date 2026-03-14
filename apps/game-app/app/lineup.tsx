@@ -1,6 +1,11 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
 
+function formatBattingAverage(hits: number, atBats: number) {
+  if (atBats <= 0) return ".000";
+  return `${(hits / atBats).toFixed(3)}`.replace("0.", ".");
+}
+
 export default function LineupScreen() {
   const { game, moveLineupPlayer, replaceLineupPlayer, moveRotationPlayer } = useGameSessionStore();
   if (!game) return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
@@ -12,7 +17,11 @@ export default function LineupScreen() {
       <Text style={{ fontSize: 22, fontWeight: "700" }}>Batting Order</Text>
       {team.activeLineup.battingOrderPlayerIds.map((playerId, index) => {
         const player = game.players[playerId];
-        const benchPlayerIds = team.rosterPlayerIds.filter((id) => !team.activeLineup.battingOrderPlayerIds.includes(id));
+        const benchPlayerIds = team.rosterPlayerIds.filter((id) => {
+          if (team.activeLineup.battingOrderPlayerIds.includes(id)) return false;
+          const benchPlayer = game.players[id];
+          return benchPlayer.primaryPosition === player.primaryPosition;
+        });
         return (
           <View key={playerId} style={{ borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 }}>
             <Text style={{ fontWeight: "700" }}>{index + 1}. {player.fullName}</Text>
@@ -29,18 +38,25 @@ export default function LineupScreen() {
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {benchPlayerIds.map((benchId) => {
                   const benchPlayer = game.players[benchId];
+                  const battingAverage = formatBattingAverage(benchPlayer.seasonStats.hits, benchPlayer.seasonStats.atBats);
                   return (
                     <Pressable
                       key={`${playerId}-${benchId}`}
                       onPress={() => replaceLineupPlayer(index, benchId)}
-                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderRadius: 999 }}
+                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderRadius: 12, maxWidth: "100%" }}
                     >
-                      <Text>Swap with {benchPlayer.fullName}</Text>
+                      <Text style={{ fontWeight: "600" }}>Swap with {benchPlayer.fullName}</Text>
+                      <Text>{benchPlayer.primaryPosition} | OVR {benchPlayer.overall}</Text>
+                      <Text>
+                        Season: {benchPlayer.seasonStats.games} G | AVG {battingAverage} | {benchPlayer.seasonStats.hits} H | {benchPlayer.seasonStats.homeRuns} HR | {benchPlayer.seasonStats.runsBattedIn} RBI
+                      </Text>
                     </Pressable>
                   );
                 })}
               </View>
-            ) : null}
+            ) : (
+              <Text>No bench players available at {player.primaryPosition}.</Text>
+            )}
           </View>
         );
       })}
