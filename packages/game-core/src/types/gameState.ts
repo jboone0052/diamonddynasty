@@ -133,6 +133,7 @@ export type PlayerSeasonStats = {
   doubles: number;
   triples: number;
   homeRuns: number;
+  battingAverage: number;
   stolenBases: number;
   inningsPitched: number;
   wins: number;

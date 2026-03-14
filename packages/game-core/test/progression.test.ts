@@ -30,6 +30,26 @@ describe("season progression", () => {
     expect(finance.lastMonthRevenueBreakdown.ticketSales).toBeGreaterThan(0);
   });
 
+
+  it("persists batting stats like hits, homers, walks, strikeouts, and batting average", () => {
+    const game = createNewGame();
+    const next = advanceWeek(game);
+    const userTeamId = next.world.userTeamId;
+    const roster = next.teams[userTeamId].rosterPlayerIds.map((playerId) => next.players[playerId]);
+
+    const playersWithPlateAppearances = roster.filter((player) => player.seasonStats.atBats + player.seasonStats.walks > 0);
+    expect(playersWithPlateAppearances.length).toBeGreaterThan(0);
+    playersWithPlateAppearances.forEach((player) => {
+      expect(player.seasonStats.games).toBeGreaterThan(0);
+      expect(player.seasonStats.hits).toBeGreaterThanOrEqual(0);
+      expect(player.seasonStats.homeRuns).toBeGreaterThanOrEqual(0);
+      expect(player.seasonStats.walks).toBeGreaterThanOrEqual(0);
+      expect(player.seasonStats.strikeouts).toBeGreaterThanOrEqual(0);
+      expect(player.seasonStats.battingAverage).toBeGreaterThanOrEqual(0);
+      expect(player.seasonStats.battingAverage).toBeLessThanOrEqual(1);
+    });
+  });
+
   it("can run to season completion and produce a promotion summary", () => {
     let game = createNewGame();
     for (let index = 0; index < game.world.weeksInSeason; index += 1) {

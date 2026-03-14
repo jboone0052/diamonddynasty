@@ -16,6 +16,7 @@ export default function RosterScreen() {
           <Text>{player.primaryPosition} | Overall (OVR) {player.overall} | POT {player.potential}</Text>
           <Text>Status: {player.status} | Morale {player.morale} | Fatigue {player.fatigue}</Text>
           <Text>Season: {player.seasonStats.games} G | {player.seasonStats.hits} H | {player.seasonStats.homeRuns} HR</Text>
+          <Text>AVG: {player.seasonStats.battingAverage.toFixed(3)} | BB: {player.seasonStats.walks} | SO: {player.seasonStats.strikeouts}</Text>
         </View>
       ))}
     </ScrollView>

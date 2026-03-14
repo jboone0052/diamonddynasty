@@ -82,6 +82,15 @@ function reconcileTeam(state: GameState, teamId: string) {
   team.injuredPlayerIds = team.rosterPlayerIds.filter((playerId) => state.players[playerId].status === "injured");
 }
 
+function recalculateBattingAverage(player: Player) {
+  player.seasonStats.battingAverage = player.seasonStats.atBats === 0
+    ? 0
+    : Number((player.seasonStats.hits / player.seasonStats.atBats).toFixed(3));
+  player.careerStats.battingAverage = player.careerStats.atBats === 0
+    ? 0
+    : Number((player.careerStats.hits / player.careerStats.atBats).toFixed(3));
+}
+
 function updatePlayerStats(state: GameState, game: ScheduledGame) {
   const result = game.result!;
   const homeWinner = result.winningTeamId === game.homeTeamId;
@@ -120,6 +129,7 @@ function updatePlayerStats(state: GameState, game: ScheduledGame) {
     player.careerStats.triples += line.triples;
     player.careerStats.homeRuns += line.homeRuns;
     player.careerStats.stolenBases += line.stolenBases;
+    recalculateBattingAverage(player);
   });
 
   Object.values(result.boxScore.pitchingLines).forEach((line) => {
