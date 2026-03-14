@@ -28,4 +28,26 @@ describe("simulateGame", () => {
     expect(result.simSummary.totalWalks).toBe(walksFromBattingLines);
     expect(result.simSummary.totalStrikeouts).toBe(strikeoutsFromBattingLines);
   });
+
+  it("keeps aggregate run environment within a believable range", () => {
+    const state = createNewGame();
+    const schedule = Object.values(state.schedule).sort((a, b) => a.week - b.week);
+
+    let totalRuns = 0;
+    let totalHits = 0;
+
+    for (const game of schedule) {
+      const result = simulateGame(state, game);
+      totalRuns += result.homeScore + result.awayScore;
+      totalHits += result.simSummary.totalHits;
+    }
+
+    const averageRunsPerGame = totalRuns / schedule.length;
+    const averageHitsPerGame = totalHits / schedule.length;
+
+    expect(averageRunsPerGame).toBeGreaterThanOrEqual(5);
+    expect(averageRunsPerGame).toBeLessThanOrEqual(12);
+    expect(averageHitsPerGame).toBeGreaterThanOrEqual(9);
+    expect(averageHitsPerGame).toBeLessThanOrEqual(22);
+  });
 });

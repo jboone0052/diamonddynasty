@@ -66,15 +66,15 @@ function resolvePlateAppearance(state: GameState, batter: Player, pitcher: Playe
   const defenseModifier = (defenseScore(defenders) - 50) * simConfig.defenseWeight;
   const stamina = pitcher.ratings.pitching?.stamina ?? 45;
   const fatiguePenalty = Math.max(0, pitcher.fatigue - (stamina * 0.6)) * 0.22;
-  const adjusted = batterScore(batter) - (pitcherScore(pitcher) - fatiguePenalty) - defenseModifier + ((nextRoll(state) * 2 - 1) * simConfig.randomnessRange);
+  const adjusted = batterScore(batter) - (pitcherScore(pitcher) - fatiguePenalty) - defenseModifier + ((nextRoll(state) * 2 - 1) * (simConfig.randomnessRange * 0.8));
   const walkChance = batter.ratings.hitting.plateDiscipline * 0.4 - ((pitcher.ratings.pitching?.control ?? 40) * 0.3) + (nextRoll(state) * 10);
 
   if (walkChance > simConfig.walkThreshold) return "walk" as const;
-  if (adjusted < -40) return "strikeout" as const;
-  if (adjusted < -10) return "out" as const;
-  if (adjusted < 6) return "single" as const;
-  if (adjusted < 16) return "double" as const;
-  if (adjusted < 24) return "triple" as const;
+  if (adjusted < -8) return "strikeout" as const;
+  if (adjusted < 24) return "out" as const;
+  if (adjusted < 31) return "single" as const;
+  if (adjusted < 35) return "double" as const;
+  if (adjusted < 36) return "triple" as const;
   return "homeRun" as const;
 }
 
@@ -326,10 +326,19 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
 
   const notableEvents: string[] = [];
   if (homeScore === awayScore) {
+    const tiebreakScorer = (teamBattingOrder: string[]) => {
+      const randomIndex = Math.floor(nextRoll(state) * teamBattingOrder.length) % teamBattingOrder.length;
+      const scorerId = teamBattingOrder[randomIndex];
+      const scorerLine = battingLines[scorerId] ?? (battingLines[scorerId] = createBattingLine(scorerId));
+      scorerLine.runs += 1;
+    };
+
     if (nextRoll(state) >= 0.5) {
       homeScore += 1;
+      tiebreakScorer(homeTeam.activeLineup.battingOrderPlayerIds);
     } else {
       awayScore += 1;
+      tiebreakScorer(awayTeam.activeLineup.battingOrderPlayerIds);
     }
     notableEvents.push("The game needed an extra-inning tiebreak to produce a winner.");
   }
