@@ -377,6 +377,7 @@ export type GameResult = {
   losingPitcherId?: string;
   attendance: number;
   notableEvents: string[];
+  playByPlay?: string[];
   boxScore: BoxScore;
   simSummary: SimSummary;
 };

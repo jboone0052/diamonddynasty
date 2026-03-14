@@ -356,6 +356,7 @@ export const GameResultSchema = z.object({
   losingPitcherId: z.string().optional(),
   attendance: z.number().int().min(0),
   notableEvents: z.array(z.string()),
+  playByPlay: z.array(z.string()).optional(),
   boxScore: BoxScoreSchema,
   simSummary: SimSummarySchema,
 });
