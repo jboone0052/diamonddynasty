@@ -40,6 +40,27 @@ describe("simulateGame", () => {
     expect(result.playByPlay?.[result.playByPlay.length - 1]).toMatch(/^Final:/);
   });
 
+  it("disambiguates duplicate last names in play-by-play entries", () => {
+    const state = createNewGame("duplicate-last-name-seed");
+    const game = Object.values(state.schedule).find((scheduledGame) => scheduledGame.week === 1)!;
+    const awayBattingOrder = state.teams[game.awayTeamId].activeLineup.battingOrderPlayerIds;
+    const firstBatter = state.players[awayBattingOrder[0]];
+    const secondBatter = state.players[awayBattingOrder[1]];
+
+    firstBatter.firstName = "Alex";
+    firstBatter.lastName = "Walker";
+    firstBatter.fullName = "Alex Walker";
+    secondBatter.firstName = "Jordan";
+    secondBatter.lastName = "Walker";
+    secondBatter.fullName = "Jordan Walker";
+
+    const result = simulateGame(state, game);
+    const playByPlay = result.playByPlay ?? [];
+
+    expect(playByPlay.some((entry) => entry.includes("Alex Walker"))).toBe(true);
+    expect(playByPlay.some((entry) => entry.includes("Jordan Walker"))).toBe(true);
+  });
+
 
   it("prevents runaway walk chains from creating absurd scores", () => {
     const state = createNewGame();
