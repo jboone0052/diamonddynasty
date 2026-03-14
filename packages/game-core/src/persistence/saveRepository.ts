@@ -127,5 +127,16 @@ export function createLocalSaveRepository(storage: SaveStorageAdapter = createDe
       const entries = await loadSaveIndex(storage);
       await writeSaveIndex(storage, entries.filter((entry) => entry.id !== saveId));
     },
+    async clearAll() {
+      const entries = await loadSaveIndex(storage);
+      const uniqueSaveIds = new Set(entries.map((entry) => entry.id));
+      uniqueSaveIds.add("autosave");
+
+      for (const saveId of uniqueSaveIds) {
+        await storage.removeItem(`${SAVE_PREFIX}${saveId}`);
+      }
+
+      await storage.removeItem(SAVE_INDEX_KEY);
+    },
   };
 }
