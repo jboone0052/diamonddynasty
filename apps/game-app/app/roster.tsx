@@ -13,7 +13,7 @@ export default function RosterScreen() {
       {snapshot.roster.map((player) => (
         <View key={player.id} style={{ borderWidth: 1, borderRadius: 8, padding: 12 }}>
           <Text style={{ fontWeight: "700" }}>{player.fullName}</Text>
-          <Text>{player.primaryPosition} | OVR {player.overall} | POT {player.potential}</Text>
+          <Text>{player.primaryPosition} | Overall (OVR) {player.overall} | POT {player.potential}</Text>
           <Text>Status: {player.status} | Morale {player.morale} | Fatigue {player.fatigue}</Text>
           <Text>Season: {player.seasonStats.games} G | {player.seasonStats.hits} H | {player.seasonStats.homeRuns} HR</Text>
         </View>

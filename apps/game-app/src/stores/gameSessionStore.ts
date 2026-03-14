@@ -48,6 +48,7 @@ type GameSessionState = {
   saveGame: () => Promise<void>;
   advanceWeek: () => Promise<void>;
   moveLineupPlayer: (fromIndex: number, toIndex: number) => void;
+  replaceLineupPlayer: (lineupIndex: number, playerId: string) => void;
   moveRotationPlayer: (fromIndex: number, toIndex: number) => void;
   adjustTicketPrice: (delta: number) => void;
   markMessageRead: (messageId: string) => void;
@@ -131,6 +132,27 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
       ...current.teams[teamId].activeLineup,
       battingOrderPlayerIds: lineup,
     });
+    set({ game: nextGame });
+  },
+  replaceLineupPlayer: (lineupIndex, playerId) => {
+    const current = get().game;
+    if (!current) return;
+
+    const teamId = current.world.userTeamId;
+    const team = current.teams[teamId];
+    const lineup = [...team.activeLineup.battingOrderPlayerIds];
+
+    if (lineupIndex < 0 || lineupIndex >= lineup.length) return;
+    if (!team.rosterPlayerIds.includes(playerId)) return;
+    if (lineup[lineupIndex] === playerId || lineup.includes(playerId)) return;
+
+    lineup[lineupIndex] = playerId;
+
+    const nextGame = setLineupAction(current, teamId, {
+      ...team.activeLineup,
+      battingOrderPlayerIds: lineup,
+    });
+
     set({ game: nextGame });
   },
   moveRotationPlayer: (fromIndex, toIndex) => {
