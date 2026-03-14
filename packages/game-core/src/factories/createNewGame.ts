@@ -148,9 +148,18 @@ export function createNewGame(): GameState {
 
   for (const base of startingTeams) {
     const rosterIds: string[] = [];
+    const usedFullNames = new Set<string>();
     for (let i = 0; i < worldConfig.rosterSize; i += 1) {
       const playerId = `player_${String(playerCounter).padStart(5, "0")}`;
-      const player = createPlayer(playerId, seed, playerCounter * 43, base.id);
+      let stepOffset = playerCounter * 43;
+      let player = createPlayer(playerId, seed, stepOffset, base.id);
+
+      while (usedFullNames.has(player.fullName)) {
+        stepOffset += 1;
+        player = createPlayer(playerId, seed, stepOffset, base.id);
+      }
+
+      usedFullNames.add(player.fullName);
       const annualSalary = Math.max(18000, player.overall * 950);
       const contractId = `contract_${playerId}`;
       contracts[contractId] = {

@@ -21,4 +21,14 @@ describe("createNewGame", () => {
     expect(game.story.activeObjectiveIds).toContain("obj_first_promotion");
     expect(game.mailbox.messages.length).toBeGreaterThanOrEqual(3);
   });
+
+  it("generates unique full names within each team roster", () => {
+    const game = createNewGame();
+
+    for (const team of Object.values(game.teams)) {
+      const rosterPlayers = team.rosterPlayerIds.map((playerId) => game.players[playerId]);
+      const fullNames = rosterPlayers.map((player) => player.fullName);
+      expect(new Set(fullNames).size).toBe(fullNames.length);
+    }
+  });
 });
