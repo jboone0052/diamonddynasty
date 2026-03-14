@@ -49,4 +49,20 @@ describe("createNewGame", () => {
     }
   });
 
+  it("creates at least one reserve backup option for every position", () => {
+    const game = createNewGame();
+    const positions = ["SP", "RP", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
+
+    for (const team of Object.values(game.teams)) {
+      const reservePlayers = team.reservePlayerIds.map((playerId) => game.players[playerId]);
+
+      for (const position of positions) {
+        const hasBackup = reservePlayers.some((player) => {
+          return player.primaryPosition === position || player.secondaryPositions.includes(position);
+        });
+        expect(hasBackup).toBe(true);
+      }
+    }
+  });
+
 });
