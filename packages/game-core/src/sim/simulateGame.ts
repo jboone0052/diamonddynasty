@@ -109,8 +109,13 @@ function moveRunnersForHit(state: GameState, bases: Array<string | null>, batter
   }
 
   const advance = hitType === "single" ? 1 : hitType === "double" ? 2 : 3;
+  const startingBases = [...bases];
+  bases[0] = null;
+  bases[1] = null;
+  bases[2] = null;
+
   for (let index = 2; index >= 0; index -= 1) {
-    const runnerId = bases[index];
+    const runnerId = startingBases[index];
     if (!runnerId) continue;
     const runner = state.players[runnerId];
     let destination = index + advance;
@@ -118,12 +123,16 @@ function moveRunnersForHit(state: GameState, bases: Array<string | null>, batter
       destination += 1;
       advancementEvents += 1;
     }
+
+    while (destination > index && destination < 3 && bases[destination]) {
+      destination -= 1;
+    }
+
     if (destination >= 3) {
       scoredRunnerIds.push(runnerId);
     } else {
       bases[destination] = runnerId;
     }
-    bases[index] = null;
   }
 
   if (advance >= 3) {
@@ -290,7 +299,11 @@ function simulateHalfInning(
 
     const outcomeLabel = outcome === "homeRun" ? "homers" : outcome;
     if (result.scoredRunnerIds.length > 0) {
-      playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} ${outcomeLabel}; ${result.scoredRunnerIds.length} run(s) score.`);
+      if (outcome === "homeRun") {
+        playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} ${outcomeLabel}; ${result.scoredRunnerIds.length} run(s) score.`);
+      } else {
+        playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} ${outcomeLabel}; ${result.scoredRunnerIds.length} run(s) score. Bases now ${formatBases(bases, state, getPlayerDisplayName)}.`);
+      }
     } else {
       playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} hits a ${outcome}. Bases now ${formatBases(bases, state, getPlayerDisplayName)}.`);
     }
