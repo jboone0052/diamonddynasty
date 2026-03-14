@@ -29,6 +29,17 @@ describe("simulateGame", () => {
     expect(result.simSummary.totalStrikeouts).toBe(strikeoutsFromBattingLines);
   });
 
+  it("includes a play-by-play log with a final line", () => {
+    const state = createNewGame();
+    const game = Object.values(state.schedule).find((scheduledGame) => scheduledGame.week === 1)!;
+
+    const result = simulateGame(state, game);
+
+    expect(result.playByPlay).toBeDefined();
+    expect(result.playByPlay?.length ?? 0).toBeGreaterThan(0);
+    expect(result.playByPlay?.[result.playByPlay.length - 1]).toMatch(/^Final:/);
+  });
+
 
   it("prevents runaway walk chains from creating absurd scores", () => {
     const state = createNewGame();
