@@ -2,12 +2,15 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
 
 export default function SavesScreen() {
-  const { game, saves, loading, refreshSaves, loadSave, saveGame } = useGameSessionStore();
+  const { game, saves, loading, refreshSaves, loadSave, saveGame, clearLocalStorage } = useGameSessionStore();
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
       <Pressable onPress={refreshSaves} style={{ padding: 12, borderWidth: 1, borderRadius: 8 }}>
         <Text>Refresh Saves</Text>
+      </Pressable>
+      <Pressable onPress={clearLocalStorage} style={{ padding: 12, borderWidth: 1, borderRadius: 8 }}>
+        <Text>{loading ? "Clearing..." : "Clear Local Storage"}</Text>
       </Pressable>
       {game ? (
         <Pressable onPress={saveGame} style={{ padding: 12, borderWidth: 1, borderRadius: 8 }}>
