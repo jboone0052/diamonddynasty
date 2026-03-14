@@ -155,16 +155,41 @@ function maybeStealBase(state: GameState, bases: Array<string | null>, battingLi
   }
 }
 
-function formatBases(bases: Array<string | null>, state: GameState) {
+function formatBases(
+  bases: Array<string | null>,
+  state: GameState,
+  getPlayerDisplayName: (playerId: string) => string,
+) {
   const labels = ["1B", "2B", "3B"] as const;
   return labels
     .map((label, index) => {
       const runnerId = bases[index];
       if (!runnerId) return `${label}: empty`;
-      const runner = state.players[runnerId];
-      return `${label}: ${runner.lastName}`;
+      return `${label}: ${getPlayerDisplayName(runnerId)}`;
     })
     .join(", ");
+}
+
+function createDisplayNameGetter(state: GameState, battingOrder: string[]) {
+  const duplicateLastNames = new Set<string>();
+  const lastNameCounts = new Map<string, number>();
+
+  battingOrder.forEach((playerId) => {
+    const lastName = state.players[playerId].lastName;
+    const nextCount = (lastNameCounts.get(lastName) ?? 0) + 1;
+    lastNameCounts.set(lastName, nextCount);
+    if (nextCount > 1) {
+      duplicateLastNames.add(lastName);
+    }
+  });
+
+  return (playerId: string) => {
+    const player = state.players[playerId];
+    if (duplicateLastNames.has(player.lastName)) {
+      return player.fullName;
+    }
+    return player.lastName;
+  };
 }
 
 function incrementPitchingInnings(line: ReturnType<typeof createPitchingLine>, outs: number) {
@@ -179,6 +204,7 @@ function simulateHalfInning(
   battingIndex: { value: number },
   pitcher: Player,
   defenders: Player[],
+  getPlayerDisplayName: (playerId: string) => string,
   battingLines: Record<string, ReturnType<typeof createBattingLine>>,
   pitchingLine: ReturnType<typeof createPitchingLine>,
   playByPlay: string[],
@@ -214,11 +240,11 @@ function simulateHalfInning(
         const runnerLine = battingLines[runnerId] ?? (battingLines[runnerId] = createBattingLine(runnerId));
         runnerLine.runs += 1;
       });
-      const batterLastName = batter.lastName;
+      const batterName = getPlayerDisplayName(batterId);
       if (scoredRunnerIds.length > 0) {
-        playByPlay.push(`${half} ${inning}: ${batterLastName} walks with the bases loaded; ${scoredRunnerIds.length} run scores.`);
+        playByPlay.push(`${half} ${inning}: ${batterName} walks with the bases loaded; ${scoredRunnerIds.length} run scores.`);
       } else {
-        playByPlay.push(`${half} ${inning}: ${batterLastName} draws a walk. Bases now ${formatBases(bases, state)}.`);
+        playByPlay.push(`${half} ${inning}: ${batterName} draws a walk. Bases now ${formatBases(bases, state, getPlayerDisplayName)}.`);
       }
       maybeStealBase(state, bases, battingLines);
       continue;
@@ -231,13 +257,13 @@ function simulateHalfInning(
       line.strikeouts += 1;
       pitchingLine.strikeouts += 1;
       strikeouts += 1;
-      playByPlay.push(`${half} ${inning}: ${batter.lastName} strikes out. ${outs} out(s).`);
+      playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} strikes out. ${outs} out(s).`);
       continue;
     }
 
     if (outcome === "out") {
       outs += 1;
-      playByPlay.push(`${half} ${inning}: ${batter.lastName} is retired. ${outs} out(s).`);
+      playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} is retired. ${outs} out(s).`);
       continue;
     }
 
@@ -264,9 +290,9 @@ function simulateHalfInning(
 
     const outcomeLabel = outcome === "homeRun" ? "homers" : outcome;
     if (result.scoredRunnerIds.length > 0) {
-      playByPlay.push(`${half} ${inning}: ${batter.lastName} ${outcomeLabel}; ${result.scoredRunnerIds.length} run(s) score.`);
+      playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} ${outcomeLabel}; ${result.scoredRunnerIds.length} run(s) score.`);
     } else {
-      playByPlay.push(`${half} ${inning}: ${batter.lastName} hits a ${outcome}. Bases now ${formatBases(bases, state)}.`);
+      playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} hits a ${outcome}. Bases now ${formatBases(bases, state, getPlayerDisplayName)}.`);
     }
 
     maybeStealBase(state, bases, battingLines);
@@ -290,6 +316,8 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
   const awayStarterId = awayTeam.rotation.starterPlayerIds[awayTeam.rotation.nextStarterIndex % awayTeam.rotation.starterPlayerIds.length];
   const homeStarter = state.players[homeStarterId];
   const awayStarter = state.players[awayStarterId];
+  const getHomeDisplayName = createDisplayNameGetter(state, homeTeam.activeLineup.battingOrderPlayerIds);
+  const getAwayDisplayName = createDisplayNameGetter(state, awayTeam.activeLineup.battingOrderPlayerIds);
   const homeBattingIndex = { value: 0 };
   const awayBattingIndex = { value: 0 };
   const battingLines: Record<string, ReturnType<typeof createBattingLine>> = {};
@@ -320,6 +348,7 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
       awayBattingIndex,
       homeStarter,
       homeTeam.activeLineup.battingOrderPlayerIds.map((playerId) => state.players[playerId]),
+      getAwayDisplayName,
       battingLines,
       pitchingLines[homeStarterId],
       playByPlay,
@@ -343,6 +372,7 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
       homeBattingIndex,
       awayStarter,
       awayTeam.activeLineup.battingOrderPlayerIds.map((playerId) => state.players[playerId]),
+      getHomeDisplayName,
       battingLines,
       pitchingLines[awayStarterId],
       playByPlay,
