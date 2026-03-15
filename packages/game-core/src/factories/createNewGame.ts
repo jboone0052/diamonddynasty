@@ -32,6 +32,9 @@ const RESERVE_BLUEPRINTS: Array<{ primary: PlayerPosition; secondary: PlayerPosi
   { primary: "RP", secondary: ["SP"] },
 ];
 
+const STARTING_FREE_AGENT_COUNT = 24;
+const FREE_AGENT_POSITION_CYCLE: PlayerPosition[] = ["SP", "RP", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"];
+
 function addDays(date: string, days: number) {
   const next = new Date(`${date}T00:00:00Z`);
   next.setUTCDate(next.getUTCDate() + days);
@@ -268,6 +271,26 @@ export function createNewGame(seed = createInitialSeed()): GameState {
       internationalCoverage: 20,
       prospectBoard: [],
     };
+  }
+
+  const usedFreeAgentNames = new Set<string>();
+  for (let i = 0; i < STARTING_FREE_AGENT_COUNT; i += 1) {
+    const playerId = `player_${String(playerCounter).padStart(5, "0")}`;
+    let stepOffset = playerCounter * 43;
+    const forcedPrimaryPosition = FREE_AGENT_POSITION_CYCLE[i % FREE_AGENT_POSITION_CYCLE.length];
+    let player = createPlayer(playerId, seed, stepOffset, undefined, forcedPrimaryPosition);
+
+    while (usedFreeAgentNames.has(player.fullName)) {
+      stepOffset += 1;
+      player = createPlayer(playerId, seed, stepOffset, undefined, forcedPrimaryPosition);
+    }
+
+    usedFreeAgentNames.add(player.fullName);
+    player.contractId = undefined;
+    player.currentTeamId = undefined;
+    player.status = "freeAgent";
+    players[playerId] = player;
+    playerCounter += 1;
   }
 
   const schedule: Record<string, ScheduledGame> = {};
