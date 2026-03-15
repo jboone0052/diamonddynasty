@@ -79,4 +79,12 @@ describe("createNewGame", () => {
     expect(game.rng.seed).toBe("fixed-seed-for-test");
   });
 
+  it("seeds the world with a pool of unsigned free agents", () => {
+    const game = createNewGame();
+    const freeAgents = Object.values(game.players).filter((player) => !player.currentTeamId && player.status === "freeAgent");
+
+    expect(freeAgents.length).toBeGreaterThan(0);
+    expect(freeAgents.every((player) => player.contractId === undefined)).toBe(true);
+  });
+
 });
