@@ -89,6 +89,7 @@ export function releasePlayer(state: GameState, teamId: string, playerId: string
 
   player.contractId = undefined;
   player.currentTeamId = undefined;
+  player.status = "freeAgent";
   player.morale = Math.max(0, player.morale - 5);
 
   applyRosterDepthChart(team, next);
@@ -125,6 +126,7 @@ export function signFreeAgent(state: GameState, teamId: string, playerId: string
 
   player.contractId = contractId;
   player.currentTeamId = teamId;
+  player.status = "active";
   player.morale = Math.min(100, player.morale + 3);
 
   if (!team.rosterPlayerIds.includes(playerId)) {

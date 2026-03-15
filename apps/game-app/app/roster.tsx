@@ -8,7 +8,7 @@ export default function RosterScreen() {
 
   const snapshot = getRosterSnapshot(game);
   const freeAgents = Object.values(game.players)
-    .filter((player) => !player.currentTeamId && player.status === "active")
+    .filter((player) => !player.currentTeamId && player.status === "freeAgent")
     .sort((a, b) => b.overall - a.overall)
     .slice(0, 20);
 
