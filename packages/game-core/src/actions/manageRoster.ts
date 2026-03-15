@@ -53,7 +53,7 @@ function applyRosterDepthChart(team: Team, state: GameState) {
   team.injuredPlayerIds = team.rosterPlayerIds.filter((playerId) => state.players[playerId].status === "injured");
 }
 
-function startingSalary(position: PlayerPosition) {
+export function getStartingAnnualSalary(position: PlayerPosition) {
   switch (position) {
     case "SP":
       return 220000;
@@ -108,7 +108,7 @@ export function signFreeAgent(state: GameState, teamId: string, playerId: string
   if (player.currentTeamId) throw new Error("Player is already under contract.");
 
   const contractId = `contract_${teamId}_${playerId}_${next.world.currentWeek}`;
-  const annualSalary = startingSalary(player.primaryPosition);
+  const annualSalary = getStartingAnnualSalary(player.primaryPosition);
   const expirationSeason = next.world.currentSeason + 1;
 
   next.contracts[contractId] = {

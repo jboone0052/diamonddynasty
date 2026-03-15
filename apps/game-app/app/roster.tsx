@@ -1,6 +1,12 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getRosterSnapshot } from "@baseball-sim/game-core";
+import { getRosterSnapshot, getStartingAnnualSalary } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
+
+
+function formatPayrollImpact(monthlyDelta: number) {
+  const sign = monthlyDelta >= 0 ? "+" : "-";
+  return `${sign}$${Math.abs(monthlyDelta).toLocaleString()} / month payroll`;
+}
 
 export default function RosterScreen() {
   const { game, error, releasePlayer, signFreeAgent } = useGameSessionStore();
@@ -24,7 +30,9 @@ export default function RosterScreen() {
           <Text>Season: {player.seasonStats.games} G | {player.seasonStats.hits} H | {player.seasonStats.homeRuns} HR</Text>
           <Text>AVG: {player.seasonStats.battingAverage.toFixed(3)} | BB: {player.seasonStats.walks} | SO: {player.seasonStats.strikeouts}</Text>
           <Pressable onPress={() => releasePlayer(player.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8, alignSelf: "flex-start" }}>
-            <Text>Release Player</Text>
+            <Text>
+              Release Player ({formatPayrollImpact(-Math.round((game.contracts[player.contractId ?? ""]?.annualSalary ?? 0) / 12))})
+            </Text>
           </Pressable>
         </View>
       ))}
@@ -37,7 +45,9 @@ export default function RosterScreen() {
           <Text>{player.primaryPosition} | Overall (OVR) {player.overall} | POT {player.potential}</Text>
           <Text>Morale {player.morale} | Fatigue {player.fatigue}</Text>
           <Pressable onPress={() => signFreeAgent(player.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8, alignSelf: "flex-start" }}>
-            <Text>Sign Player</Text>
+            <Text>
+              Sign Player ({formatPayrollImpact(Math.round(getStartingAnnualSalary(player.primaryPosition) / 12))})
+            </Text>
           </Pressable>
         </View>
       ))}
