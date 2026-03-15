@@ -2,7 +2,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
 
 export default function SavesScreen() {
-  const { game, saves, loading, refreshSaves, loadSave, saveGame, clearLocalStorage } = useGameSessionStore();
+  const { game, saves, loading, refreshSaves, loadSave, deleteSave, saveGame, clearLocalStorage } = useGameSessionStore();
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
@@ -21,9 +21,14 @@ export default function SavesScreen() {
         <View key={save.id} style={{ borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 }}>
           <Text style={{ fontWeight: "700" }}>{save.saveName}</Text>
           <Text>Updated: {save.updatedAt}</Text>
-          <Pressable onPress={() => loadSave(save.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8 }}>
-            <Text>Load Save</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Pressable onPress={() => loadSave(save.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8 }}>
+              <Text>Load Save</Text>
+            </Pressable>
+            <Pressable onPress={() => deleteSave(save.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8 }}>
+              <Text>Delete Save</Text>
+            </Pressable>
+          </View>
         </View>
       ))}
     </ScrollView>
