@@ -48,6 +48,7 @@ type GameSessionState = {
   refreshSaves: () => Promise<void>;
   createNewGame: () => Promise<void>;
   loadSave: (saveId: string) => Promise<void>;
+  deleteSave: (saveId: string) => Promise<void>;
   saveGame: () => Promise<void>;
   clearLocalStorage: () => Promise<void>;
   advanceWeek: () => Promise<void>;
@@ -99,6 +100,18 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
       set({ game, saves, selectedSaveId: saveId, loading: false });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to load save." });
+    }
+  },
+  deleteSave: async (saveId: string) => {
+    set({ loading: true, error: null });
+    try {
+      await repository.remove(saveId);
+      const saves = await repository.list();
+      const selectedSaveId = get().selectedSaveId === saveId ? null : get().selectedSaveId;
+      const game = get().selectedSaveId === saveId ? null : get().game;
+      set({ game, saves, selectedSaveId, loading: false });
+    } catch (error) {
+      set({ loading: false, error: error instanceof Error ? error.message : "Failed to delete save." });
     }
   },
   saveGame: async () => {
