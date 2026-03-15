@@ -7,6 +7,8 @@ import {
   expandStadiumCapacity as expandStadiumCapacityAction,
   GameState,
   markMailRead as markMailReadAction,
+  releasePlayer as releasePlayerAction,
+  signFreeAgent as signFreeAgentAction,
   setLineup as setLineupAction,
   setRotation as setRotationAction,
   setTicketPrice as setTicketPriceAction,
@@ -55,6 +57,8 @@ type GameSessionState = {
   adjustTicketPrice: (delta: number) => void;
   expandStadiumCapacity: () => void;
   markMessageRead: (messageId: string) => void;
+  releasePlayer: (playerId: string) => void;
+  signFreeAgent: (playerId: string) => void;
 };
 
 async function persistCurrentGame(game: GameState, saveId: string | null) {
@@ -198,5 +202,25 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
     const current = get().game;
     if (!current) return;
     set({ game: markMailReadAction(current, messageId) });
+  },
+  releasePlayer: (playerId) => {
+    const current = get().game;
+    if (!current) return;
+    const teamId = current.world.userTeamId;
+    try {
+      set({ game: releasePlayerAction(current, teamId, playerId), error: null });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Failed to release player." });
+    }
+  },
+  signFreeAgent: (playerId) => {
+    const current = get().game;
+    if (!current) return;
+    const teamId = current.world.userTeamId;
+    try {
+      set({ game: signFreeAgentAction(current, teamId, playerId), error: null });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Failed to sign player." });
+    }
   },
 }));
