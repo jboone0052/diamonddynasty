@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   advanceWeek,
   createLocalSaveRepository,
+  expandStadiumCapacity,
   createNewGame,
   deserializeGameState,
   getPromotionStatus,
@@ -48,6 +49,25 @@ describe("season progression", () => {
       expect(player.seasonStats.battingAverage).toBeGreaterThanOrEqual(0);
       expect(player.seasonStats.battingAverage).toBeLessThanOrEqual(1);
     });
+  });
+
+
+  it("keeps enough cash to satisfy promotion reserves after required stadium upgrades", () => {
+    let game = createNewGame();
+    const teamId = game.world.userTeamId;
+    const league = game.leagues[game.teams[teamId].leagueId];
+
+    while (game.stadiums[game.teams[teamId].stadiumId].capacity < league.minStadiumCapacityForPromotion) {
+      game = expandStadiumCapacity(game, teamId);
+    }
+
+    for (let index = 0; index < game.world.weeksInSeason; index += 1) {
+      game = advanceWeek(game);
+    }
+
+    const status = getPromotionStatus(game);
+    expect(status.stadiumRequirementMet).toBe(true);
+    expect(status.cashRequirementMet).toBe(true);
   });
 
   it("can run to season completion and produce a promotion summary", () => {
