@@ -201,7 +201,8 @@ export function createNewGame(seed = createInitialSeed()): GameState {
       }
 
       usedFullNames.add(player.fullName);
-      const annualSalary = Math.max(18000, player.overall * 950);
+      const salaryScaleFromOverall = Math.max(0.75, player.overall / 60);
+      const annualSalary = Math.round(economyConfig.averagePayrollPerPlayerMonthly * 12 * salaryScaleFromOverall);
       const contractId = `contract_${playerId}`;
       contracts[contractId] = {
         id: contractId,
