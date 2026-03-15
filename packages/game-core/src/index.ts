@@ -10,3 +10,4 @@ export * from "./actions/markMailRead";
 export * from "./actions/expandStadiumCapacity";
 export * from "./persistence/saveRepository";
 export * from "./queries";
+export * from "./actions/manageRoster";
