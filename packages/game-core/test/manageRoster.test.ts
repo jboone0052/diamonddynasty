@@ -16,6 +16,7 @@ describe("manageRoster", () => {
     expect(next.teams[teamId].rosterPlayerIds).not.toContain(playerId);
     expect(next.players[playerId].currentTeamId).toBeUndefined();
     expect(next.players[playerId].contractId).toBeUndefined();
+    expect(next.players[playerId].status).toBe("freeAgent");
     expect(next.contracts[contractId]).toBeUndefined();
     expect(next.finances[teamId].payrollMonthly).toBeLessThan(startingPayroll);
   });
@@ -31,6 +32,7 @@ describe("manageRoster", () => {
     expect(next.teams[teamId].rosterPlayerIds).toContain(playerId);
     expect(next.players[playerId].currentTeamId).toBe(teamId);
     expect(next.players[playerId].contractId).toBeDefined();
+    expect(next.players[playerId].status).toBe("active");
 
     const signedContract = next.contracts[next.players[playerId].contractId!];
     expect(signedContract.playerId).toBe(playerId);
