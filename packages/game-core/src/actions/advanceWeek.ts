@@ -91,6 +91,251 @@ function recalculateBattingAverage(player: Player) {
     : Number((player.careerStats.hits / player.careerStats.atBats).toFixed(3));
 }
 
+function clampFatigue(value: number) {
+  return Math.max(0, Math.min(100, Number(value.toFixed(1))));
+}
+
+function getHitterFatigueCost(line?: {
+  atBats: number;
+  walks: number;
+  runs: number;
+  strikeouts: number;
+  stolenBases: number;
+}) {
+  if (!line) {
+    return simConfig.fatigueIncreaseHitters * 0.35;
+  }
+
+  const workload = (line.atBats * 0.9)
+    + (line.walks * 0.55)
+    + (line.runs * 0.3)
+    + (line.strikeouts * 0.2)
+    + (line.stolenBases * 0.75);
+  return Math.max(simConfig.fatigueIncreaseHitters * 0.35, workload + 0.8);
+}
+
+function getPitcherFatigueCost(player: Player, line: {
+  inningsPitched: number;
+  pitchesThrown: number;
+  hitsAllowed: number;
+  earnedRuns: number;
+  walks: number;
+}) {
+  const stamina = player.ratings.pitching?.stamina ?? 45;
+  const staminaRelief = Math.max(-2.5, Math.min(2.5, (stamina - 50) / 10));
+  const stressLoad = (line.pitchesThrown * 0.16)
+    + (line.inningsPitched * 2.4)
+    + (line.hitsAllowed * 0.45)
+    + (line.walks * 0.55)
+    + (line.earnedRuns * 0.9);
+  return Math.max(simConfig.fatigueIncreasePitchers * 0.35, stressLoad - staminaRelief);
+}
+
+function clampRating(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function getStandingRow(state: GameState, teamId: string) {
+  const team = state.teams[teamId];
+  return state.standings[team.leagueId].rows.find((row) => row.teamId === teamId);
+}
+
+function getTargetTicketPrice(team: Team) {
+  return Math.max(
+    7,
+    Math.min(
+      20,
+      economyConfig.baseTicketPrice
+        + Math.round((team.marketSize - 45) / 12)
+        + Math.round((team.prestige - 35) / 18)
+        + Math.round((team.fanInterest - 40) / 20),
+    ),
+  );
+}
+
+function getFanInterestDelta(state: GameState, game: ScheduledGame, teamId: string, opponentId: string, wonGame: boolean) {
+  const team = state.teams[teamId];
+  const opponent = state.teams[opponentId];
+  const finance = state.finances[teamId];
+  const row = getStandingRow(state, teamId);
+  const result = game.result!;
+  const scoreMargin = Math.abs(result.homeScore - result.awayScore);
+  let delta = wonGame ? 1 : -1;
+
+  if (wonGame) {
+    delta += Math.min(1, Math.round(scoreMargin / 4));
+    if (opponent.prestige >= 50) {
+      delta += 1;
+    }
+  } else if (scoreMargin >= 4) {
+    delta -= 1;
+  }
+
+  if (row) {
+    if (row.winPct >= 0.6) {
+      delta += 1;
+    } else if (row.winPct <= 0.4) {
+      delta -= 1;
+    }
+    if (row.streak >= 3) {
+      delta += 1;
+    } else if (row.streak <= -3) {
+      delta -= 1;
+    }
+  }
+
+  if (teamId === game.homeTeamId) {
+    const capacity = state.stadiums[team.stadiumId].capacity;
+    const fillRate = result.attendance / Math.max(1, capacity);
+    const priceGap = finance.ticketPrice - getTargetTicketPrice(team);
+    if (fillRate >= 0.82) {
+      delta += 1;
+    } else if (fillRate <= 0.42) {
+      delta -= 1;
+    }
+    if (priceGap >= 5 && fillRate < 0.6) {
+      delta -= 1;
+    }
+    if (priceGap <= -2 && fillRate >= 0.72) {
+      delta += 1;
+    }
+  }
+
+  return Math.max(-3, Math.min(3, delta));
+}
+
+function refreshCommercialState(state: GameState, teamId: string) {
+  const team = state.teams[teamId];
+  const finance = state.finances[teamId];
+  const row = getStandingRow(state, teamId);
+  const stadium = state.stadiums[team.stadiumId];
+  const attendanceShare = row ? row.averageAttendance / Math.max(1, stadium.capacity) : 0.4;
+  const winPct = row?.winPct ?? 0.5;
+  const marketingRatio = finance.marketingBudgetMonthly / Math.max(1, economyConfig.averageMarketingBudgetMonthly);
+  const sponsorMultiplier = 0.55
+    + ((team.marketSize / 100) * 0.45)
+    + ((team.prestige / 100) * 0.18)
+    + ((team.fanInterest / 100) * 0.25)
+    + (attendanceShare * 0.25)
+    + (winPct * 0.18)
+    + (Math.min(1.4, marketingRatio) * 0.06);
+  finance.sponsorRevenueMonthly = Math.round(Math.max(
+    economyConfig.baseSponsorRevenueMonthly * 0.7,
+    Math.min(economyConfig.baseSponsorRevenueMonthly * 1.85, economyConfig.baseSponsorRevenueMonthly * sponsorMultiplier),
+  ));
+
+  const merchandiseTarget = 10
+    + (team.fanInterest * 0.45)
+    + (team.prestige * 0.14)
+    + (attendanceShare * 18)
+    + (winPct * 8)
+    + (Math.max(-10, team.morale - 50) * 0.08);
+  finance.merchandiseStrength = clampRating((finance.merchandiseStrength * 0.55) + (merchandiseTarget * 0.45));
+}
+
+type InjuryCandidate = {
+  playerId: string;
+  teamId: string;
+  role: "pitcher" | "hitter";
+  workload: number;
+  riskWeight: number;
+};
+
+function clampProbability(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function buildInjuryCandidates(state: GameState, game: ScheduledGame) {
+  const result = game.result!;
+  const candidates: InjuryCandidate[] = [];
+
+  Object.values(result.boxScore.battingLines).forEach((line) => {
+    const player = state.players[line.playerId];
+    if (!player || !player.currentTeamId || player.status === "injured" || player.status === "retired" || player.status === "suspended") {
+      return;
+    }
+    const plateAppearances = line.atBats + line.walks;
+    if (plateAppearances === 0) {
+      return;
+    }
+    const workload = plateAppearances + (line.stolenBases * 1.4) + (line.strikeouts * 0.25);
+    const riskWeight = 1
+      + (workload * 0.5)
+      + (player.fatigue / 20)
+      + (player.injuryProneness / 16)
+      + (player.primaryPosition === "C" ? 0.9 : 0);
+    candidates.push({ playerId: player.id, teamId: player.currentTeamId, role: "hitter", workload, riskWeight });
+  });
+
+  Object.values(result.boxScore.pitchingLines).forEach((line) => {
+    const player = state.players[line.playerId];
+    if (!player || !player.currentTeamId || player.status === "injured" || player.status === "retired" || player.status === "suspended") {
+      return;
+    }
+    const workload = (line.pitchesThrown / 6)
+      + (line.inningsPitched * 1.8)
+      + ((line.hitsAllowed + line.walks + line.earnedRuns) * 0.8);
+    const riskWeight = 1.5
+      + workload
+      + (player.fatigue / 14)
+      + (player.injuryProneness / 14);
+    candidates.push({ playerId: player.id, teamId: player.currentTeamId, role: "pitcher", workload, riskWeight });
+  });
+
+  return candidates;
+}
+
+function chooseInjuryCandidate(state: GameState, candidates: InjuryCandidate[]) {
+  const ranked = [...candidates].sort((left, right) => right.riskWeight - left.riskWeight);
+  const clearLeader = ranked[0];
+  const runnerUp = ranked[1];
+  if (clearLeader && clearLeader.riskWeight >= 18 && (!runnerUp || clearLeader.riskWeight >= runnerUp.riskWeight * 1.6)) {
+    return clearLeader;
+  }
+
+  const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.riskWeight, 0);
+  if (totalWeight <= 0) {
+    return undefined;
+  }
+
+  let roll = nextRoll(state) * totalWeight;
+  for (const candidate of candidates) {
+    roll -= candidate.riskWeight;
+    if (roll <= 0) {
+      return candidate;
+    }
+  }
+
+  return candidates[candidates.length - 1];
+}
+
+function getInjuryChance(state: GameState, candidate: InjuryCandidate) {
+  const player = state.players[candidate.playerId];
+  const facilities = state.facilities[candidate.teamId];
+  const medicalSupport = facilities?.medicalFacilityLevel ?? 1;
+  const fatigueFactor = candidate.role === "pitcher" ? player.fatigue / 340 : player.fatigue / 620;
+  const pronenessFactor = player.injuryProneness / (candidate.role === "pitcher" ? 400 : 700);
+  const workloadFactor = candidate.workload / (candidate.role === "pitcher" ? 65 : 150);
+  const preventionBonus = (medicalSupport - 1) * 0.012;
+  const baseChance = simConfig.baseInjuryChance * (candidate.role === "pitcher" ? 2.1 : 1.45);
+  return clampProbability(baseChance + fatigueFactor + pronenessFactor + workloadFactor - preventionBonus, 0.01, candidate.role === "pitcher" ? 0.5 : 0.26);
+}
+
+function getInjuryProfile(state: GameState, candidate: InjuryCandidate, severityRoll: number) {
+  const player = state.players[candidate.playerId];
+  const facilities = state.facilities[candidate.teamId];
+  const medicalSupport = facilities?.medicalFacilityLevel ?? 1;
+  const severityScore = severityRoll + (player.fatigue / 220) + (candidate.workload / (candidate.role === "pitcher" ? 95 : 180)) - ((medicalSupport - 1) * 0.04);
+  const severity = severityScore > 1.02 ? "major" as const : severityScore > 0.66 ? "moderate" as const : "minor" as const;
+  const baseWeeks = severity === "major" ? (candidate.role === "pitcher" ? 7 : 6) : severity === "moderate" ? (candidate.role === "pitcher" ? 4 : 3) : (candidate.role === "pitcher" ? 2 : 1);
+  const extraWeeks = candidate.workload > (candidate.role === "pitcher" ? 22 : 8) ? 1 : 0;
+  const gamesRemainingEstimate = Math.max(1, baseWeeks + extraWeeks - Math.max(0, medicalSupport - 1));
+  const injuryType = candidate.role === "pitcher"
+    ? (severity === "major" ? "Elbow inflammation" : severity === "moderate" ? "Shoulder strain" : "Forearm tightness")
+    : (severity === "major" ? "Hamstring strain" : severity === "moderate" ? "Wrist sprain" : "Bruised shoulder");
+  return { severity, gamesRemainingEstimate, injuryType };
+}
+
 function updatePlayerStats(state: GameState, game: ScheduledGame) {
   const result = game.result!;
   const homeWinner = result.winningTeamId === game.homeTeamId;
@@ -102,9 +347,14 @@ function updatePlayerStats(state: GameState, game: ScheduledGame) {
     const player = state.players[playerId];
     player.seasonStats.games += 1;
     player.careerStats.games += 1;
-    player.fatigue = Math.min(100, player.fatigue + (player.ratings.pitching ? simConfig.fatigueIncreasePitchers : simConfig.fatigueIncreaseHitters));
     const wonGame = player.currentTeamId === result.winningTeamId;
     player.morale = Math.max(0, Math.min(100, player.morale + (wonGame ? 2 : -1)));
+  });
+
+  new Set([...homeLineupIds, ...awayLineupIds]).forEach((playerId) => {
+    const player = state.players[playerId];
+    const line = result.boxScore.battingLines[playerId];
+    player.fatigue = clampFatigue(player.fatigue + getHitterFatigueCost(line));
   });
 
   Object.values(result.boxScore.battingLines).forEach((line) => {
@@ -134,6 +384,7 @@ function updatePlayerStats(state: GameState, game: ScheduledGame) {
 
   Object.values(result.boxScore.pitchingLines).forEach((line) => {
     const player = state.players[line.playerId];
+    player.fatigue = clampFatigue(player.fatigue + getPitcherFatigueCost(player, line));
     player.seasonStats.inningsPitched += line.inningsPitched;
     player.seasonStats.hitsAllowed += line.hitsAllowed;
     player.seasonStats.earnedRuns += line.earnedRuns;
@@ -158,8 +409,57 @@ function updatePlayerStats(state: GameState, game: ScheduledGame) {
 
   state.teams[game.homeTeamId].morale = Math.max(0, Math.min(100, state.teams[game.homeTeamId].morale + (homeWinner ? 2 : -2)));
   state.teams[game.awayTeamId].morale = Math.max(0, Math.min(100, state.teams[game.awayTeamId].morale + (homeWinner ? -2 : 2)));
-  state.teams[game.homeTeamId].fanInterest = Math.max(10, Math.min(100, state.teams[game.homeTeamId].fanInterest + (homeWinner ? 1 : -1)));
-  state.teams[game.awayTeamId].fanInterest = Math.max(10, Math.min(100, state.teams[game.awayTeamId].fanInterest + (homeWinner ? -1 : 1)));
+  state.teams[game.homeTeamId].fanInterest = clampRating(state.teams[game.homeTeamId].fanInterest + getFanInterestDelta(state, game, game.homeTeamId, game.awayTeamId, homeWinner));
+  state.teams[game.awayTeamId].fanInterest = clampRating(state.teams[game.awayTeamId].fanInterest + getFanInterestDelta(state, game, game.awayTeamId, game.homeTeamId, !homeWinner));
+}
+
+function maybeCreateInjury(state: GameState, game: ScheduledGame) {
+  const candidates = buildInjuryCandidates(state, game);
+  if (candidates.length === 0) {
+    return;
+  }
+
+  const candidate = chooseInjuryCandidate(state, candidates);
+  if (!candidate) {
+    return;
+  }
+
+  const player = state.players[candidate.playerId];
+  const injuryChance = getInjuryChance(state, candidate);
+  if (nextRoll(state) > injuryChance || player.status === "injured") {
+    return;
+  }
+
+  const injuryId = `injury_${Object.keys(state.injuries).length + 1}`;
+  const startDate = game.date;
+  const profile = getInjuryProfile(state, candidate, nextRoll(state));
+  const expectedReturnDate = addDays(startDate, profile.gamesRemainingEstimate * 7);
+  state.injuries[injuryId] = {
+    id: injuryId,
+    playerId: candidate.playerId,
+    injuryType: profile.injuryType,
+    severity: profile.severity,
+    startDate,
+    expectedReturnDate,
+    gamesRemainingEstimate: profile.gamesRemainingEstimate,
+    isActive: true,
+  };
+  player.status = "injured";
+  const team = state.teams[player.currentTeamId!];
+  if (!team.injuredPlayerIds.includes(candidate.playerId)) {
+    team.injuredPlayerIds.push(candidate.playerId);
+  }
+  state.mailbox.messages.unshift({
+    id: `mail_injury_${injuryId}`,
+    date: game.date,
+    sender: "Training Staff",
+    subject: `${player.fullName} injury update`,
+    body: `${player.fullName} suffered ${profile.injuryType.toLowerCase()} after a heavy workload and is expected to miss ${profile.gamesRemainingEstimate} week(s).`,
+    category: "injury",
+    isRead: false,
+    relatedEntityId: candidate.playerId,
+  });
+  state.mailbox.unreadCount = state.mailbox.messages.filter((message) => !message.isRead).length;
 }
 
 function updateStandings(state: GameState, game: ScheduledGame) {
@@ -197,61 +497,37 @@ function updateStandings(state: GameState, game: ScheduledGame) {
   standings.lastUpdatedDate = game.date;
 }
 
-function maybeCreateInjury(state: GameState, game: ScheduledGame) {
-  const participants = [...state.teams[game.homeTeamId].activeLineup.battingOrderPlayerIds, ...state.teams[game.awayTeamId].activeLineup.battingOrderPlayerIds];
-  const injuredPlayerId = participants[Math.floor(nextRoll(state) * participants.length)];
-  const player = state.players[injuredPlayerId];
-  const injuryChance = simConfig.baseInjuryChance + (player.fatigue / 1000) + (player.injuryProneness / 4000);
-  if (nextRoll(state) > injuryChance || player.status === "injured") {
-    return;
-  }
-
-  const severityRoll = nextRoll(state);
-  const severity = severityRoll > 0.9 ? "major" : severityRoll > 0.6 ? "moderate" : "minor";
-  const gamesRemainingEstimate = severity === "major" ? 6 : severity === "moderate" ? 3 : 1;
-  const injuryId = `injury_${Object.keys(state.injuries).length + 1}`;
-  const startDate = game.date;
-  const expectedReturnDate = addDays(startDate, gamesRemainingEstimate * 7);
-  state.injuries[injuryId] = {
-    id: injuryId,
-    playerId: injuredPlayerId,
-    injuryType: severity === "major" ? "Hamstring strain" : severity === "moderate" ? "Wrist sprain" : "Bruised shoulder",
-    severity,
-    startDate,
-    expectedReturnDate,
-    gamesRemainingEstimate,
-    isActive: true,
-  };
-  player.status = "injured";
-  const team = state.teams[player.currentTeamId!];
-  if (!team.injuredPlayerIds.includes(injuredPlayerId)) {
-    team.injuredPlayerIds.push(injuredPlayerId);
-  }
-  state.mailbox.messages.unshift({
-    id: `mail_injury_${injuryId}`,
-    date: game.date,
-    sender: "Training Staff",
-    subject: `${player.fullName} injury update`,
-    body: `${player.fullName} suffered a ${state.injuries[injuryId].injuryType} and is expected to miss ${gamesRemainingEstimate} week(s).`,
-    category: "injury",
-    isRead: false,
-    relatedEntityId: injuredPlayerId,
-  });
-  state.mailbox.unreadCount = state.mailbox.messages.filter((message) => !message.isRead).length;
-}
 
 function recoverInjuries(state: GameState) {
   Object.values(state.injuries).forEach((injury) => {
     if (!injury.isActive) {
       return;
     }
-    injury.gamesRemainingEstimate = Math.max(0, injury.gamesRemainingEstimate - 1);
+    const player = state.players[injury.playerId];
+    const teamId = player.currentTeamId;
+    const medicalSupport = teamId ? (state.facilities[teamId]?.medicalFacilityLevel ?? 1) : 1;
+    let recoveryStep = 1;
+
+    if (injury.severity !== "major" && medicalSupport >= 2 && nextRoll(state) > 0.32) {
+      recoveryStep += 1;
+    }
+    if (injury.severity === "minor" && medicalSupport >= 2 && player.fatigue <= 60 && nextRoll(state) > 0.45) {
+      recoveryStep += 1;
+    }
+    if (injury.severity === "major") {
+      recoveryStep = Math.min(recoveryStep, 1);
+    }
+    if (player.fatigue >= 82 && nextRoll(state) > 0.55) {
+      recoveryStep = Math.max(1, recoveryStep - 1);
+    }
+
+    injury.gamesRemainingEstimate = Math.max(0, injury.gamesRemainingEstimate - recoveryStep);
+    injury.expectedReturnDate = addDays(state.world.currentDate, injury.gamesRemainingEstimate * 7);
     if (injury.gamesRemainingEstimate === 0) {
       injury.isActive = false;
-      const player = state.players[injury.playerId];
       player.status = "active";
-      if (player.currentTeamId) {
-        const team = state.teams[player.currentTeamId];
+      if (teamId) {
+        const team = state.teams[teamId];
         team.injuredPlayerIds = team.injuredPlayerIds.filter((playerId) => playerId !== injury.playerId);
       }
     }
@@ -269,7 +545,7 @@ function runWeeklyDevelopment(state: GameState) {
     } else if (player.age >= 31 && developmentRoll > 0.82) {
       player.overall = Math.max(30, player.overall - 1);
     }
-    player.fatigue = Math.max(0, player.fatigue - simConfig.weeklyRecovery);
+    player.fatigue = clampFatigue(player.fatigue - (player.ratings.pitching ? simConfig.weeklyRecovery + 4 : simConfig.weeklyRecovery + 2));
     player.development.lastWeeklyDevelopmentTick = state.world.currentDate;
   });
 }
@@ -338,16 +614,24 @@ function processFinances(state: GameState, game: ScheduledGame) {
   const result = game.result!;
   const homeFinance = state.finances[game.homeTeamId];
   const awayFinance = state.finances[game.awayTeamId];
+  const homeTeam = state.teams[game.homeTeamId];
+  const homeRow = getStandingRow(state, game.homeTeamId);
   const seriesGames = Math.max(1, economyConfig.gamesPerSeries ?? 1);
   const ticketRevenue = result.attendance * homeFinance.ticketPrice * seriesGames;
-  const merchandiseRevenue = Math.round(result.attendance * (homeFinance.merchandiseStrength / 100) * 3 * seriesGames);
+  const merchandiseSpendPerFan = 1.2
+    + (homeFinance.merchandiseStrength / 45)
+    + (homeTeam.fanInterest / 120)
+    + ((homeRow?.winPct ?? 0.5) * 0.5);
+  const merchandiseRevenue = Math.round(result.attendance * merchandiseSpendPerFan * seriesGames);
   homeFinance.lastMonthRevenueBreakdown.ticketSales += ticketRevenue;
   homeFinance.lastMonthRevenueBreakdown.merchandise += merchandiseRevenue;
   awayFinance.lastMonthExpenseBreakdown.travel += economyConfig.travelCostPerRoadGame * seriesGames;
 }
 
 function settleWeeklyLedger(state: GameState) {
-  Object.values(state.finances).forEach((finance) => {
+  Object.keys(state.finances).forEach((teamId) => {
+    refreshCommercialState(state, teamId);
+    const finance = state.finances[teamId];
     finance.lastMonthRevenueBreakdown.sponsorships += Math.round(finance.sponsorRevenueMonthly / 4);
     finance.lastMonthExpenseBreakdown.payroll += Math.round(finance.payrollMonthly / 4);
     finance.lastMonthExpenseBreakdown.staff += Math.round(finance.staffCostsMonthly / 4);
@@ -359,7 +643,10 @@ function settleWeeklyLedger(state: GameState) {
     const totalRevenue = Object.values(finance.lastMonthRevenueBreakdown).reduce((sum, value) => sum + value, 0);
     const totalExpenses = Object.values(finance.lastMonthExpenseBreakdown).reduce((sum, value) => sum + value, 0);
     finance.currentCash += totalRevenue - totalExpenses;
-    finance.currentDebt += finance.lastMonthExpenseBreakdown.debtService > 0 ? 0 : 0;
+    if (finance.currentCash < 0) {
+      finance.currentDebt += Math.abs(finance.currentCash);
+      finance.currentCash = 0;
+    }
   });
   syncTeamFinances(state);
 }
@@ -439,3 +726,11 @@ export function advanceWeek(input: GameState): GameState {
 
   return state;
 }
+
+
+
+
+
+
+
+

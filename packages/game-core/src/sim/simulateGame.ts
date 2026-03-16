@@ -1,4 +1,4 @@
-import { simConfig } from "@baseball-sim/config";
+import { economyConfig, simConfig } from "@baseball-sim/config";
 import { GameResult, GameState, PitchingLine, Player, ScheduledGame, Team } from "../types/gameState";
 import { nextSeededValue } from "../utils/rng";
 
@@ -7,6 +7,9 @@ type PitchingManager = {
   starterId: string;
   currentPitcherId: string;
   availableRelieverIds: string[];
+  closerId?: string;
+  setupIds: string[];
+  longRelieverId?: string;
 };
 
 type HalfInningResult = {
@@ -84,6 +87,21 @@ function pitcherScore(player: Player) {
   );
 }
 
+function fatigueAdjustedPitcherScore(player: Player) {
+  return pitcherScore(player) - (player.fatigue * 0.32);
+}
+
+function relieverLeverageScore(player: Player) {
+  const stamina = player.ratings.pitching?.stamina ?? 45;
+  return fatigueAdjustedPitcherScore(player) - (stamina * 0.08);
+}
+
+function relieverLengthScore(player: Player) {
+  const stamina = player.ratings.pitching?.stamina ?? 45;
+  return fatigueAdjustedPitcherScore(player) + (stamina * 0.18);
+}
+
+
 function defenseScore(players: Player[]) {
   const total = players.reduce((sum, player) => sum + player.ratings.defense.fielding + player.ratings.defense.range, 0);
   return total / Math.max(1, players.length * 2);
@@ -108,11 +126,11 @@ function resolvePlateAppearance(state: GameState, batter: Player, pitcher: Playe
   const environment = matchup + chaos + (fatigueLoad * 0.11);
 
   let walkRate = clamp(0.04 + (disciplineEdge * 0.024) + (fatigueLoad * 0.01), 0.02, 0.08);
-  let strikeoutRate = clamp(0.11 - (contactEdge * 0.02) + ((velocity - 55) / 800) - (fatigueLoad * 0.006), 0.07, 0.18);
-  let singleRate = clamp(0.175 + (environment * 0.024) + (contactEdge * 0.05), 0.13, 0.24);
-  let doubleRate = clamp(0.05 + (environment * 0.01) + (powerEdge * 0.016), 0.022, 0.065);
+  let strikeoutRate = clamp(0.106 - (contactEdge * 0.02) + ((velocity - 55) / 800) - (fatigueLoad * 0.006), 0.07, 0.18);
+  let singleRate = clamp(0.184 + (environment * 0.025) + (contactEdge * 0.052), 0.14, 0.25);
+  let doubleRate = clamp(0.052 + (environment * 0.01) + (powerEdge * 0.017), 0.024, 0.068);
   let tripleRate = clamp(0.0025 + (Math.max(0, speedEdge) * 0.007) + (environment * 0.001), 0.001, 0.01);
-  let homeRunRate = clamp(0.02 + (environment * 0.009) + (powerEdge * 0.015), 0.007, 0.038);
+  let homeRunRate = clamp(0.021 + (environment * 0.009) + (powerEdge * 0.015), 0.008, 0.04);
 
   const totalNonOut = walkRate + strikeoutRate + singleRate + doubleRate + tripleRate + homeRunRate;
   if (totalNonOut > 0.78) {
@@ -213,7 +231,7 @@ function moveRunnersForHit(
     }
     if (runnerOnFirst) {
       const runner = state.players[runnerOnFirst];
-      const scoresFromFirst = (runner.ratings.speed.speed > 74 && nextRoll(state) > 0.72) || nextRoll(state) > 0.96;
+      const scoresFromFirst = (runner.ratings.speed.speed > 72 && nextRoll(state) > 0.68) || nextRoll(state) > 0.94;
       if (scoresFromFirst) {
         scoreRunner(battingLines, runnerOnFirst, scoredRunnerIds);
         advancementEvents += 1;
@@ -227,7 +245,7 @@ function moveRunnersForHit(
 
   if (runnerOnSecond) {
     const runner = state.players[runnerOnSecond];
-    const scoresFromSecond = (runner.ratings.speed.speed > 64 && nextRoll(state) > 0.6) || nextRoll(state) > 0.94;
+    const scoresFromSecond = (runner.ratings.speed.speed > 62 && nextRoll(state) > 0.54) || nextRoll(state) > 0.9;
     if (scoresFromSecond) {
       scoreRunner(battingLines, runnerOnSecond, scoredRunnerIds);
       advancementEvents += 1;
@@ -238,7 +256,7 @@ function moveRunnersForHit(
 
   if (runnerOnFirst) {
     const runner = state.players[runnerOnFirst];
-    const takesThird = (runner.ratings.speed.speed > 58 && nextRoll(state) > 0.52) || nextRoll(state) > 0.86;
+    const takesThird = (runner.ratings.speed.speed > 56 && nextRoll(state) > 0.48) || nextRoll(state) > 0.82;
     if (takesThird) {
       bases[2] = runnerOnFirst;
       advancementEvents += 1;
@@ -416,11 +434,20 @@ function createPitchingManager(team: Team, state: GameState, starterId: string):
     return true;
   });
 
+  const leverageRank = [...relievers].sort((left, right) => relieverLeverageScore(state.players[right]) - relieverLeverageScore(state.players[left]));
+  const lengthRank = [...relievers].sort((left, right) => relieverLengthScore(state.players[right]) - relieverLengthScore(state.players[left]));
+  const closerId = leverageRank[0];
+  const setupIds = leverageRank.filter((playerId) => playerId !== closerId).slice(0, 2);
+  const longRelieverId = lengthRank.find((playerId) => playerId !== closerId) ?? closerId;
+
   return {
     team,
     starterId,
     currentPitcherId: starterId,
     availableRelieverIds: relievers,
+    closerId,
+    setupIds,
+    longRelieverId,
   };
 }
 
@@ -432,10 +459,14 @@ function shouldPullPitcher(state: GameState, manager: PitchingManager, pitchingL
   const pitcher = state.players[manager.currentPitcherId];
   const stamina = pitcher.ratings.pitching?.stamina ?? 45;
   const isStarter = manager.currentPitcherId === manager.starterId;
+  const fatiguePenalty = Math.round(pitcher.fatigue * 0.12);
 
   if (isStarter) {
-    const pitchLimit = 72 + Math.round(stamina * 0.45);
-    if (inning >= 7) {
+    const pitchLimit = Math.max(72, 80 + Math.round(stamina * 0.44) - fatiguePenalty);
+    if (inning >= 8) {
+      return true;
+    }
+    if (inning >= 7 && pitcher.fatigue >= 85) {
       return true;
     }
     if (inning >= 5 && pitchingLine.pitchesThrown >= pitchLimit) {
@@ -447,20 +478,38 @@ function shouldPullPitcher(state: GameState, manager: PitchingManager, pitchingL
     if (inning >= 4 && Math.abs(scoreDiff) >= 5) {
       return true;
     }
+    if (inning >= 5 && pitcher.fatigue >= 74 && (pitchingLine.hitsAllowed + pitchingLine.walks) >= 7) {
+      return true;
+    }
     return false;
   }
 
-  const relieverPitchLimit = 18 + Math.round(stamina * 0.12);
+  const relieverPitchLimit = Math.max(12, 20 + Math.round(stamina * 0.12) - Math.round(pitcher.fatigue * 0.06));
   if (pitchingLine.pitchesThrown >= relieverPitchLimit) {
     return true;
   }
-  if (inning >= 9 && Math.abs(scoreDiff) <= 2 && pitchingLine.pitchesThrown >= 14) {
+  if (pitcher.fatigue >= 86 && pitchingLine.pitchesThrown >= 12) {
     return true;
   }
-  if (Math.abs(scoreDiff) >= 5 && pitchingLine.pitchesThrown >= 12) {
+  if (inning >= 9 && Math.abs(scoreDiff) <= 2 && pitchingLine.pitchesThrown >= 16) {
+    return true;
+  }
+  if (Math.abs(scoreDiff) >= 5 && pitchingLine.pitchesThrown >= 13) {
     return true;
   }
   return false;
+}
+
+function takePreferredReliever(manager: PitchingManager, preferredIds: Array<string | undefined>) {
+  for (const preferredId of preferredIds) {
+    if (!preferredId || !manager.availableRelieverIds.includes(preferredId)) {
+      continue;
+    }
+    manager.availableRelieverIds = manager.availableRelieverIds.filter((playerId) => playerId !== preferredId);
+    manager.currentPitcherId = preferredId;
+    return preferredId;
+  }
+  return undefined;
 }
 
 function chooseRelieverId(state: GameState, manager: PitchingManager, inning: number, scoreDiff: number) {
@@ -468,12 +517,29 @@ function chooseRelieverId(state: GameState, manager: PitchingManager, inning: nu
     return manager.currentPitcherId;
   }
 
-  const available = [...manager.availableRelieverIds];
-  if (inning >= 8 && Math.abs(scoreDiff) <= 2) {
-    available.sort((left, right) => pitcherScore(state.players[right]) - pitcherScore(state.players[left]));
-  } else if (Math.abs(scoreDiff) >= 5) {
-    available.sort((left, right) => pitcherScore(state.players[left]) - pitcherScore(state.players[right]));
+  const leverageGame = inning >= 7 && Math.abs(scoreDiff) <= 3;
+  const bulkGame = inning <= 6 || Math.abs(scoreDiff) >= 4;
+  const preferredIds = leverageGame
+    ? (inning >= 9 && Math.abs(scoreDiff) <= 2
+      ? [manager.closerId, ...manager.setupIds, manager.longRelieverId]
+      : [...manager.setupIds, manager.closerId, manager.longRelieverId])
+    : bulkGame
+      ? [manager.longRelieverId, ...manager.setupIds, manager.closerId]
+      : [...manager.setupIds, manager.longRelieverId, manager.closerId];
+
+  const preferredPitcherId = takePreferredReliever(manager, preferredIds);
+  if (preferredPitcherId) {
+    return preferredPitcherId;
   }
+
+  const available = [...manager.availableRelieverIds];
+  available.sort((left, right) => {
+    const leftPlayer = state.players[left];
+    const rightPlayer = state.players[right];
+    return bulkGame
+      ? relieverLengthScore(rightPlayer) - relieverLengthScore(leftPlayer)
+      : relieverLeverageScore(rightPlayer) - relieverLeverageScore(leftPlayer);
+  });
 
   const nextPitcherId = available[0];
   manager.availableRelieverIds = manager.availableRelieverIds.filter((playerId) => playerId !== nextPitcherId);
@@ -512,6 +578,7 @@ function maybeChangePitcherDuringHalf(
   pitchingManager: PitchingManager,
   pitchingLines: Record<string, PitchingLine>,
   inning: number,
+  scoreDiff: number,
   outsRecorded: number,
   runsAllowedThisHalf: number,
   baserunnersAllowed: number,
@@ -526,13 +593,16 @@ function maybeChangePitcherDuringHalf(
   const pitcher = state.players[pitchingManager.currentPitcherId];
   const stamina = pitcher.ratings.pitching?.stamina ?? 45;
   const isStarter = pitchingManager.currentPitcherId === pitchingManager.starterId;
+  const highLeverage = inning >= 7 && Math.abs(scoreDiff) <= 3;
   const shouldChange = isStarter
     ? runsAllowedThisHalf >= 4
-      || currentLine.pitchesThrown >= (80 + Math.round(stamina * 0.38))
+      || currentLine.pitchesThrown >= (82 + Math.round(stamina * 0.36) - Math.round(pitcher.fatigue * 0.1))
+      || pitcher.fatigue >= 89
       || (outsRecorded <= 1 && baserunnersAllowed >= 5)
       || (outsRecorded === 0 && battersFaced >= 8)
     : runsAllowedThisHalf >= 3
-      || currentLine.pitchesThrown >= 24
+      || currentLine.pitchesThrown >= Math.max(13, 23 - Math.round(pitcher.fatigue * 0.05))
+      || pitcher.fatigue >= (highLeverage ? 82 : 86)
       || (outsRecorded <= 1 && baserunnersAllowed >= 4)
       || (outsRecorded === 0 && battersFaced >= 7);
 
@@ -540,7 +610,7 @@ function maybeChangePitcherDuringHalf(
     return false;
   }
 
-  const nextPitcherId = chooseRelieverId(state, pitchingManager, inning, 0);
+  const nextPitcherId = chooseRelieverId(state, pitchingManager, inning, scoreDiff);
   getPitchingLine(pitchingLines, nextPitcherId);
   playByPlay.push(`Pitching change: ${pitchingManager.team.nickname} goes to ${state.players[nextPitcherId].fullName} mid-inning.`);
   return true;
@@ -558,6 +628,7 @@ function simulateHalfInning(
   battingLines: Record<string, ReturnType<typeof createBattingLine>>,
   pitchingManager: PitchingManager,
   pitchingLines: Record<string, PitchingLine>,
+  defensiveScoreDiff: number,
   playByPlay: string[],
 ): HalfInningResult {
   const bases: Array<string | null> = [null, null, null];
@@ -660,6 +731,7 @@ function simulateHalfInning(
         pitchingManager,
         pitchingLines,
         inning,
+        defensiveScoreDiff - activePitcherRunsAllowed,
         activePitcherOuts,
         activePitcherRunsAllowed,
         activePitcherBaserunnersAllowed,
@@ -725,6 +797,7 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
       battingLines,
       homePitching,
       pitchingLines,
+      homeScore - awayScore,
       playByPlay,
     );
     awayScore += awayHalf.runs;
@@ -751,6 +824,7 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
       battingLines,
       awayPitching,
       pitchingLines,
+      awayScore - homeScore,
       playByPlay,
     );
     homeScore += homeHalf.runs;
@@ -869,14 +943,37 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
 
   const homeFinance = state.finances[game.homeTeamId];
   const homeStandings = state.standings[game.leagueId].rows.find((row) => row.teamId === game.homeTeamId);
-  const attendanceBase = state.teams[game.homeTeamId].fanInterest / 100;
-  const pricePenalty = Math.max(0.7, 1 - ((homeFinance.ticketPrice - 12) * 0.03));
-  const momentumBoost = homeStandings ? 1 + (homeStandings.winPct * 0.15) : 1;
+  const awayStandings = state.standings[game.leagueId].rows.find((row) => row.teamId === game.awayTeamId);
+  const targetTicketPrice = Math.max(
+    7,
+    Math.min(
+      20,
+      economyConfig.baseTicketPrice
+        + Math.round((homeTeam.marketSize - 45) / 12)
+        + Math.round((homeTeam.prestige - 35) / 18)
+        + Math.round((homeTeam.fanInterest - 40) / 20),
+    ),
+  );
+  const priceDelta = homeFinance.ticketPrice - targetTicketPrice;
+  const priceEffect = priceDelta <= 0
+    ? 1 + Math.min(0.12, Math.abs(priceDelta) * 0.018)
+    : 1 / (1 + Math.pow(priceDelta * 0.11, 1.15));
+  const baseDemandShare = 0.18
+    + (homeTeam.fanInterest * 0.004)
+    + (homeTeam.marketSize * 0.002)
+    + (homeTeam.prestige * 0.0015)
+    + (homeTeam.morale * 0.001);
+  const momentumBoost = homeStandings
+    ? ((homeStandings.winPct - 0.5) * 0.28) + (Math.max(-5, Math.min(5, homeStandings.streak)) * 0.015)
+    : 0;
+  const opponentDraw = ((awayTeam.prestige - 30) / 250) + (((awayStandings?.winPct ?? 0.5) - 0.5) * 0.12);
+  const demandVariance = 0.96 + (nextRoll(state) * 0.08);
+  const attendanceShare = clamp((baseDemandShare + momentumBoost + opponentDraw) * priceEffect * demandVariance, 0.16, 0.97);
   const attendance = Math.max(
     250,
     Math.min(
       state.stadiums[homeTeam.stadiumId].capacity,
-      Math.round(state.stadiums[homeTeam.stadiumId].capacity * attendanceBase * pricePenalty * momentumBoost),
+      Math.round(state.stadiums[homeTeam.stadiumId].capacity * attendanceShare),
     ),
   );
 
@@ -925,6 +1022,12 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
     },
   };
 }
+
+
+
+
+
+
 
 
 

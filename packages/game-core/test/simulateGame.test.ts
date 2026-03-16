@@ -148,6 +148,7 @@ describe("simulateGame", () => {
   });
 
   it("keeps regulation tiebreak games to a minority of the schedule", () => {
+
     const state = createNewGame("late-game-balance-seed");
     const schedule = Object.values(state.schedule).sort((a, b) => a.week - b.week || a.id.localeCompare(b.id));
     let tiebreakGames = 0;
@@ -177,7 +178,26 @@ describe("simulateGame", () => {
       }
     }
 
+
     expect(loserHitlessGames).toBeLessThanOrEqual(2);
   });
+
+  it("cuts attendance when ticket prices outrun local demand", () => {
+    const budgetState = createNewGame("attendance-price-seed");
+    const premiumState = createNewGame("attendance-price-seed");
+    const budgetGame = Object.values(budgetState.schedule).find((scheduledGame) => scheduledGame.week === 1)!;
+    const premiumGame = premiumState.schedule[budgetGame.id];
+
+    budgetState.teams[budgetGame.homeTeamId].fanInterest = 38;
+    premiumState.teams[premiumGame.homeTeamId].fanInterest = 38;
+    budgetState.finances[budgetGame.homeTeamId].ticketPrice = 9;
+    premiumState.finances[premiumGame.homeTeamId].ticketPrice = 24;
+
+    const budgetResult = simulateGame(budgetState, budgetGame);
+    const premiumResult = simulateGame(premiumState, premiumGame);
+
+    expect(budgetResult.attendance).toBeGreaterThan(premiumResult.attendance);
+  });
 });
+
 

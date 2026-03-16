@@ -1,5 +1,13 @@
 import { GameState, Player, ScheduledGame, StandingsRow } from "./types/gameState";
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getActiveInjuryRecord(state: GameState, playerId: string) {
+  return Object.values(state.injuries).find((injury) => injury.isActive && injury.playerId === playerId);
+}
+
 export function getUserTeam(state: GameState) {
   return state.teams[state.world.userTeamId];
 }
@@ -42,6 +50,76 @@ export function getRosterSnapshot(state: GameState, teamId = state.world.userTea
     injuredPlayers: team.injuredPlayerIds.map((playerId: string) => state.players[playerId]),
     reservePlayers: team.reservePlayerIds.map((playerId: string) => state.players[playerId]),
   };
+}
+
+export function getPlayerHealthSnapshot(state: GameState, playerId: string) {
+  const player = state.players[playerId];
+  const activeInjury = getActiveInjuryRecord(state, playerId);
+  const hasInjuryStatus = player.status === "injured";
+  const medicalSupportLevel = player.currentTeamId ? (state.facilities[player.currentTeamId]?.medicalFacilityLevel ?? 1) : 1;
+  const rolePressure = player.primaryPosition === "SP" || player.primaryPosition === "RP" ? 10 : player.primaryPosition === "C" ? 6 : 0;
+  const riskScore = activeInjury || hasInjuryStatus
+    ? 0
+    : clamp(Math.round((player.fatigue * 0.62) + (player.injuryProneness * 0.34) + rolePressure - ((medicalSupportLevel - 1) * 4)), 0, 100);
+  const riskLabel = activeInjury || hasInjuryStatus
+    ? "Injured"
+    : riskScore >= 75
+      ? "High"
+      : riskScore >= 50
+        ? "Elevated"
+        : riskScore >= 30
+          ? "Watch"
+          : "Low";
+  const factors: string[] = [];
+  if (!activeInjury && !hasInjuryStatus) {
+    if (player.fatigue >= 80) factors.push(`Fatigue ${player.fatigue}`);
+    if (player.injuryProneness >= 70) factors.push(`Proneness ${player.injuryProneness}`);
+    if ((player.primaryPosition === "SP" || player.primaryPosition === "RP") && player.fatigue >= 68) factors.push("Pitching workload");
+    if (player.primaryPosition === "C") factors.push("Catching load");
+    if (factors.length === 0) factors.push("No immediate red flags");
+  }
+
+  return {
+    playerId,
+    riskScore,
+    riskLabel,
+    factors,
+    activeInjury,
+    medicalSupportLevel,
+    recoverySummary: activeInjury ? `${activeInjury.severity[0].toUpperCase()}${activeInjury.severity.slice(1)} injury, ${activeInjury.gamesRemainingEstimate} week(s) remaining` : hasInjuryStatus ? "Injury status active, return timeline pending" : null,
+    recoveryOutlook: activeInjury ? `Medical L${medicalSupportLevel} | Return target ${activeInjury.expectedReturnDate}` : hasInjuryStatus ? `Medical L${medicalSupportLevel} | Await staff update` : null,
+  };
+}
+
+export function getTeamManagementHealthSnapshot(state: GameState, teamId = state.world.userTeamId) {
+  const team = state.teams[teamId];
+  const lineupWarnings = team.activeLineup.battingOrderPlayerIds
+    .map((playerId, index) => ({ player: state.players[playerId], health: getPlayerHealthSnapshot(state, playerId), slot: index + 1 }))
+    .filter(({ health }) => health.riskLabel === "Injured" || health.riskScore >= 50)
+    .map(({ player, health, slot }) => ({
+      playerId: player.id,
+      slot,
+      playerName: player.fullName,
+      riskLabel: health.riskLabel,
+      summary: health.activeInjury
+        ? `${player.fullName} is still injured and should not be in the batting order.`
+        : `${player.fullName} carries ${health.riskLabel.toLowerCase()} injury risk (${health.factors.join(", ")}).`,
+    }));
+
+  const rotationWarnings = team.rotation.starterPlayerIds
+    .map((playerId, index) => ({ player: state.players[playerId], health: getPlayerHealthSnapshot(state, playerId), slot: index + 1 }))
+    .filter(({ health }) => health.riskLabel === "Injured" || health.riskScore >= 50)
+    .map(({ player, health, slot }) => ({
+      playerId: player.id,
+      slot,
+      playerName: player.fullName,
+      riskLabel: health.riskLabel,
+      summary: health.activeInjury
+        ? `${player.fullName} is injured and should not remain in the rotation.`
+        : `${player.fullName} is lined up as Starter ${slot} with ${health.riskLabel.toLowerCase()} injury risk (${health.factors.join(", ")}).`,
+    }));
+
+  return { lineupWarnings, rotationWarnings };
 }
 
 export function getScheduleSnapshot(state: GameState, teamId = state.world.userTeamId): ScheduledGame[] {
@@ -108,6 +186,17 @@ export function getWeeklyResultsSnapshot(state: GameState, requestedWeek?: numbe
   const standings = getStandingsSnapshot(state, leagueId);
   const standingsRow = standings.find((row) => row.teamId === userTeamId)!;
   const ranking = standings.findIndex((row) => row.teamId === userTeamId) + 1;
+  const weekDates = new Set(games.map((game) => game.date));
+  const injuriesThisWeek = Object.values(state.injuries)
+    .filter((injury) => weekDates.has(injury.startDate))
+    .map((injury) => {
+      const player = state.players[injury.playerId];
+      const team = player.currentTeamId ? state.teams[player.currentTeamId] : undefined;
+      return { injury, player, team };
+    });
+  const userGameTeamIds = userGame ? [userGame.homeTeamId, userGame.awayTeamId] : [userTeamId];
+  const userTeamInjuries = injuriesThisWeek.filter((item) => item.team?.id === userTeamId);
+  const userGameInjuries = injuriesThisWeek.filter((item) => item.team && userGameTeamIds.includes(item.team.id));
 
   return {
     week: resolvedWeek,
@@ -118,6 +207,12 @@ export function getWeeklyResultsSnapshot(state: GameState, requestedWeek?: numbe
     averageAttendance: Math.round(totalAttendance / games.length),
     standingsRow,
     ranking,
+    injuryReport: {
+      userTeam: userTeamInjuries,
+      userGame: userGameInjuries,
+    },
     seasonSummary: state.seasonSummary,
   };
 }
+
+

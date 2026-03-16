@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocalSearchParams } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getWeeklyResultsSnapshot } from "@baseball-sim/game-core";
+import { getPlayerHealthSnapshot, getWeeklyResultsSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
@@ -66,6 +66,21 @@ function BoxScoreRow({
   );
 }
 
+function getHealthColors(label: string) {
+  switch (label) {
+    case "Injured":
+      return { backgroundColor: "#fee2e2", color: "#991b1b" };
+    case "High":
+      return { backgroundColor: "#ffedd5", color: "#9a3412" };
+    case "Elevated":
+      return { backgroundColor: "#fef3c7", color: "#92400e" };
+    case "Watch":
+      return { backgroundColor: "#dbeafe", color: "#1d4ed8" };
+    default:
+      return { backgroundColor: "#dcfce7", color: "#166534" };
+  }
+}
+
 export default function ResultsScreen() {
   const { game } = useGameSessionStore();
   const params = useLocalSearchParams<{ week?: string }>();
@@ -91,6 +106,16 @@ export default function ResultsScreen() {
   const userWon = userGame?.result?.winningTeamId === userTeamId;
   const homeTeam = userGame ? game.teams[userGame.homeTeamId] : null;
   const awayTeam = userGame ? game.teams[userGame.awayTeamId] : null;
+  const injuryReport = snapshot.injuryReport.userGame.length > 0 ? snapshot.injuryReport.userGame : snapshot.injuryReport.userTeam;
+  const healthWatch = game.teams[userTeamId].rosterPlayerIds
+    .map((playerId) => ({ player: game.players[playerId], health: getPlayerHealthSnapshot(game, playerId) }))
+    .filter((item) => item.health.activeInjury || item.health.riskScore >= 50)
+    .sort((left, right) => {
+      const leftPriority = left.health.activeInjury ? 200 : left.health.riskScore;
+      const rightPriority = right.health.activeInjury ? 200 : right.health.riskScore;
+      return rightPriority - leftPriority;
+    })
+    .slice(0, 4);
 
   const getTeamBattingTotals = (teamId: string) => {
     if (!userGame?.result) {
@@ -141,7 +166,7 @@ export default function ResultsScreen() {
       <View style={{ gap: 4 }}>
         <Text style={{ fontSize: 28, fontWeight: "800", color: "#0f172a" }}>Week {snapshot.week} Results</Text>
         <Text style={{ color: "#475569" }}>
-          Review your club&apos;s final first, then the box score and the rest of the league.
+          Review your club&apos;s final first, then the box score, health updates, and the rest of the league.
         </Text>
       </View>
 
@@ -196,6 +221,41 @@ export default function ResultsScreen() {
             {(userGame.result.playByPlay ?? []).slice(0, 5).map((entry, index) => (
               <Text key={`${userGame.id}-pbp-${index}`} style={{ color: "#475569" }}>{index + 1}. {entry}</Text>
             ))}
+          </SectionCard>
+
+          <SectionCard title="Injury Report">
+            {injuryReport.length > 0 ? injuryReport.map(({ injury, player, team }) => (
+              <View key={injury.id} style={{ gap: 3, paddingVertical: 4 }}>
+                <Text style={{ fontWeight: "700", color: team?.id === userTeamId ? "#991b1b" : "#0f172a" }}>
+                  {player.fullName} ({team?.nickname ?? "Club"})
+                </Text>
+                <Text style={{ color: "#475569" }}>
+                  {injury.injuryType} | {injury.severity} | {injury.gamesRemainingEstimate} week(s) remaining
+                </Text>
+              </View>
+            )) : <Text style={{ color: "#475569" }}>No injuries were recorded in your game or for your club this week.</Text>}
+          </SectionCard>
+
+          <SectionCard title="Health Watch">
+            {healthWatch.length > 0 ? healthWatch.map(({ player, health }) => {
+              const tone = getHealthColors(health.riskLabel);
+              return (
+                <View key={`health-${player.id}`} style={{ gap: 4, paddingVertical: 4 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                    <Text style={{ fontWeight: "700", color: "#0f172a", flex: 1 }}>{player.fullName}</Text>
+                    <View style={{ borderRadius: 999, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: tone.backgroundColor }}>
+                      <Text style={{ color: tone.color, fontWeight: "700" }}>{health.riskLabel}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: "#475569" }}>
+                    {health.activeInjury ? health.recoverySummary : `Risk ${health.riskScore} | ${health.factors.join(" | ")}`}
+                  </Text>
+                  <Text style={{ color: "#64748b" }}>
+                    {health.activeInjury ? health.recoveryOutlook : `Medical L${health.medicalSupportLevel}`}
+                  </Text>
+                </View>
+              );
+            }) : <Text style={{ color: "#475569" }}>No one on your roster is carrying elevated injury risk right now.</Text>}
           </SectionCard>
 
           <SectionCard title={`${game.teams[userGame.homeTeamId].nickname} Batting`}>

@@ -1,11 +1,33 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getRosterSnapshot, getStartingAnnualSalary } from "@baseball-sim/game-core";
+import { getPlayerHealthSnapshot, getRosterSnapshot, getStartingAnnualSalary } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
-
 
 function formatPayrollImpact(monthlyDelta: number) {
   const sign = monthlyDelta >= 0 ? "+" : "-";
   return `${sign}$${Math.abs(monthlyDelta).toLocaleString()} / month payroll`;
+}
+
+function getHealthColors(label: string) {
+  switch (label) {
+    case "Injured":
+      return { backgroundColor: "#fee2e2", color: "#991b1b" };
+    case "High":
+      return { backgroundColor: "#ffedd5", color: "#9a3412" };
+    case "Elevated":
+      return { backgroundColor: "#fef3c7", color: "#92400e" };
+    case "Watch":
+      return { backgroundColor: "#dbeafe", color: "#1d4ed8" };
+    default:
+      return { backgroundColor: "#dcfce7", color: "#166534" };
+  }
+}
+
+function renderSeasonLine(player: ReturnType<typeof getRosterSnapshot>["roster"][number]) {
+  if (player.primaryPosition === "SP" || player.primaryPosition === "RP") {
+    return `${player.seasonStats.inningsPitched.toFixed(1)} IP | ${player.seasonStats.earnedRuns} ER | ${player.seasonStats.strikeoutsPitched} SO | ${player.seasonStats.walksAllowed} BB`;
+  }
+
+  return `${player.seasonStats.games} G | ${player.seasonStats.hits} H | ${player.seasonStats.homeRuns} HR | AVG ${player.seasonStats.battingAverage.toFixed(3)}`;
 }
 
 export default function RosterScreen() {
@@ -22,35 +44,71 @@ export default function RosterScreen() {
     <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
       <Text style={{ fontSize: 22, fontWeight: "700" }}>Current Roster</Text>
       {error ? <Text style={{ color: "#b91c1c" }}>{error}</Text> : null}
-      {snapshot.roster.map((player) => (
-        <View key={player.id} style={{ borderWidth: 1, borderRadius: 8, padding: 12, gap: 6 }}>
-          <Text style={{ fontWeight: "700" }}>{player.fullName}</Text>
-          <Text>{player.primaryPosition} | Overall (OVR) {player.overall} | POT {player.potential}</Text>
-          <Text>Status: {player.status} | Morale {player.morale} | Fatigue {player.fatigue}</Text>
-          <Text>Season: {player.seasonStats.games} G | {player.seasonStats.hits} H | {player.seasonStats.homeRuns} HR</Text>
-          <Text>AVG: {player.seasonStats.battingAverage.toFixed(3)} | BB: {player.seasonStats.walks} | SO: {player.seasonStats.strikeouts}</Text>
-          <Pressable onPress={() => releasePlayer(player.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8, alignSelf: "flex-start" }}>
-            <Text>
-              Release Player ({formatPayrollImpact(-Math.round((game.contracts[player.contractId ?? ""]?.annualSalary ?? 0) / 12))})
-            </Text>
-          </Pressable>
-        </View>
-      ))}
+      {snapshot.roster.map((player) => {
+        const health = getPlayerHealthSnapshot(game, player.id);
+        const tone = getHealthColors(health.riskLabel);
+        const contract = player.contractId ? game.contracts[player.contractId] : undefined;
+
+        return (
+          <View key={player.id} style={{ borderWidth: 1, borderRadius: 8, padding: 12, gap: 6, borderColor: health.activeInjury ? "#fca5a5" : "#d1d5db" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={{ fontWeight: "700" }}>{player.fullName}</Text>
+                <Text>{player.primaryPosition} | Overall (OVR) {player.overall} | POT {player.potential}</Text>
+              </View>
+              <View style={{ borderRadius: 999, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: tone.backgroundColor }}>
+                <Text style={{ color: tone.color, fontWeight: "700" }}>{health.riskLabel}</Text>
+              </View>
+            </View>
+            <Text>Status: {player.status} | Morale {player.morale} | Fatigue {player.fatigue}</Text>
+            <Text>{renderSeasonLine(player)}</Text>
+            {health.activeInjury ? (
+              <>
+                <Text style={{ color: "#991b1b", fontWeight: "600" }}>{health.recoverySummary}</Text>
+                <Text style={{ color: "#7f1d1d" }}>{health.recoveryOutlook}</Text>
+              </>
+            ) : (
+              <>
+                <Text>Risk Score {health.riskScore} | Medical Support L{health.medicalSupportLevel}</Text>
+                <Text style={{ color: "#475569" }}>{health.factors.join(" | ")}</Text>
+              </>
+            )}
+            <Pressable onPress={() => releasePlayer(player.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8, alignSelf: "flex-start" }}>
+              <Text>
+                Release Player ({formatPayrollImpact(-Math.round((contract?.annualSalary ?? 0) / 12))})
+              </Text>
+            </Pressable>
+          </View>
+        );
+      })}
 
       <Text style={{ fontSize: 22, fontWeight: "700", marginTop: 8 }}>Free Agents</Text>
       {freeAgents.length === 0 ? <Text>No free agents currently available.</Text> : null}
-      {freeAgents.map((player) => (
-        <View key={`fa-${player.id}`} style={{ borderWidth: 1, borderRadius: 8, padding: 12, gap: 6 }}>
-          <Text style={{ fontWeight: "700" }}>{player.fullName}</Text>
-          <Text>{player.primaryPosition} | Overall (OVR) {player.overall} | POT {player.potential}</Text>
-          <Text>Morale {player.morale} | Fatigue {player.fatigue}</Text>
-          <Pressable onPress={() => signFreeAgent(player.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8, alignSelf: "flex-start" }}>
-            <Text>
-              Sign Player ({formatPayrollImpact(Math.round(getStartingAnnualSalary(player.primaryPosition) / 12))})
-            </Text>
-          </Pressable>
-        </View>
-      ))}
+      {freeAgents.map((player) => {
+        const health = getPlayerHealthSnapshot(game, player.id);
+        const tone = getHealthColors(health.riskLabel);
+
+        return (
+          <View key={`fa-${player.id}`} style={{ borderWidth: 1, borderRadius: 8, padding: 12, gap: 6 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={{ fontWeight: "700" }}>{player.fullName}</Text>
+                <Text>{player.primaryPosition} | Overall (OVR) {player.overall} | POT {player.potential}</Text>
+              </View>
+              <View style={{ borderRadius: 999, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: tone.backgroundColor }}>
+                <Text style={{ color: tone.color, fontWeight: "700" }}>{health.riskLabel}</Text>
+              </View>
+            </View>
+            <Text>Morale {player.morale} | Fatigue {player.fatigue}</Text>
+            <Text style={{ color: "#475569" }}>{health.factors.join(" | ")}</Text>
+            <Pressable onPress={() => signFreeAgent(player.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8, alignSelf: "flex-start" }}>
+              <Text>
+                Sign Player ({formatPayrollImpact(Math.round(getStartingAnnualSalary(player.primaryPosition) / 12))})
+              </Text>
+            </Pressable>
+          </View>
+        );
+      })}
     </ScrollView>
   );
 }

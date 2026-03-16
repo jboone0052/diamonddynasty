@@ -7,6 +7,7 @@ import {
   createNewGame as createNewGameAction,
   expandStadiumCapacity as expandStadiumCapacityAction,
   GameState,
+  getTeamManagementHealthSnapshot,
   markMailRead as markMailReadAction,
   releasePlayer as releasePlayerAction,
   signFreeAgent as signFreeAgentAction,
@@ -40,12 +41,21 @@ const repository = createLocalSaveRepository({
 
 type SaveSummary = { id: string; saveName: string; updatedAt: string; createdAt: string };
 
+type AdvanceWeekConfirmation = {
+  injuredLineupCount: number;
+  injuredRotationCount: number;
+  highRiskLineupCount: number;
+  highRiskRotationCount: number;
+  message: string;
+};
+
 type GameSessionState = {
   game: GameState | null;
   saves: SaveSummary[];
   selectedSaveId: string | null;
   loading: boolean;
   error: string | null;
+  advanceWeekConfirmation: AdvanceWeekConfirmation | null;
   refreshSaves: () => Promise<void>;
   createNewGame: () => Promise<void>;
   completeIntro: () => Promise<void>;
@@ -53,7 +63,8 @@ type GameSessionState = {
   deleteSave: (saveId: string) => Promise<void>;
   saveGame: () => Promise<void>;
   clearLocalStorage: () => Promise<void>;
-  advanceWeek: () => Promise<void>;
+  advanceWeek: (force?: boolean) => Promise<boolean>;
+  dismissAdvanceWeekConfirmation: () => void;
   moveLineupPlayer: (fromIndex: number, toIndex: number) => void;
   replaceLineupPlayer: (lineupIndex: number, playerId: string) => void;
   moveRotationPlayer: (fromIndex: number, toIndex: number) => void;
@@ -73,23 +84,44 @@ async function persistCurrentGame(game: GameState, saveId: string | null) {
   return repository.create(game, game.meta.saveName);
 }
 
+function buildAdvanceWeekConfirmation(game: GameState): AdvanceWeekConfirmation | null {
+  const health = getTeamManagementHealthSnapshot(game);
+  const injuredLineupCount = health.lineupWarnings.filter((item) => item.riskLabel === "Injured").length;
+  const injuredRotationCount = health.rotationWarnings.filter((item) => item.riskLabel === "Injured").length;
+  const highRiskLineupCount = health.lineupWarnings.filter((item) => item.riskLabel === "High").length;
+  const highRiskRotationCount = health.rotationWarnings.filter((item) => item.riskLabel === "High").length;
+
+  if (injuredLineupCount === 0 && injuredRotationCount === 0) {
+    return null;
+  }
+
+  return {
+    injuredLineupCount,
+    injuredRotationCount,
+    highRiskLineupCount,
+    highRiskRotationCount,
+    message: `You still have ${injuredLineupCount} injured lineup player(s) and ${injuredRotationCount} injured starter(s) assigned. Advance again to continue anyway, or fix the lineup first.`,
+  };
+}
+
 export const useGameSessionStore = create<GameSessionState>((set, get) => ({
   game: null,
   saves: [],
   selectedSaveId: null,
   loading: false,
   error: null,
+  advanceWeekConfirmation: null,
   refreshSaves: async () => {
     const saves = await repository.list();
     set({ saves });
   },
   createNewGame: async () => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, advanceWeekConfirmation: null });
     try {
       const game = createNewGameAction();
       const saveId = await repository.create(game, game.meta.saveName);
       const saves = await repository.list();
-      set({ game, saves, selectedSaveId: saveId, loading: false });
+      set({ game, saves, selectedSaveId: saveId, loading: false, advanceWeekConfirmation: null });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to create game." });
     }
@@ -102,29 +134,29 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
       const game = completeIntroAction(current);
       const saveId = await persistCurrentGame(game, get().selectedSaveId);
       const saves = await repository.list();
-      set({ game, selectedSaveId: saveId, saves, loading: false });
+      set({ game, selectedSaveId: saveId, saves, loading: false, advanceWeekConfirmation: null });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to complete intro." });
     }
   },
   loadSave: async (saveId: string) => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, advanceWeekConfirmation: null });
     try {
       const game = await repository.load(saveId);
       const saves = await repository.list();
-      set({ game, saves, selectedSaveId: saveId, loading: false });
+      set({ game, saves, selectedSaveId: saveId, loading: false, advanceWeekConfirmation: null });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to load save." });
     }
   },
   deleteSave: async (saveId: string) => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, advanceWeekConfirmation: null });
     try {
       await repository.remove(saveId);
       const saves = await repository.list();
       const selectedSaveId = get().selectedSaveId === saveId ? null : get().selectedSaveId;
       const game = get().selectedSaveId === saveId ? null : get().game;
-      set({ game, saves, selectedSaveId, loading: false });
+      set({ game, saves, selectedSaveId, loading: false, advanceWeekConfirmation: null });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to delete save." });
     }
@@ -142,27 +174,42 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
     }
   },
   clearLocalStorage: async () => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, advanceWeekConfirmation: null });
     try {
       await repository.clearAll();
-      set({ game: null, saves: [], selectedSaveId: null, loading: false });
+      set({ game: null, saves: [], selectedSaveId: null, loading: false, advanceWeekConfirmation: null });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to clear local storage." });
     }
   },
-  advanceWeek: async () => {
+  advanceWeek: async (force = false) => {
     const current = get().game;
-    if (!current) return;
-    set({ loading: true, error: null });
+    if (!current) return false;
+
+    const confirmation = buildAdvanceWeekConfirmation(current);
+    if (!force && confirmation) {
+      set({ advanceWeekConfirmation: confirmation, error: confirmation.message });
+      return false;
+    }
+
+    set({ loading: true, error: null, advanceWeekConfirmation: null });
     try {
       const game = advanceWeekAction(current);
       const saveId = await persistCurrentGame(game, get().selectedSaveId);
       await repository.autosave(game);
       const saves = await repository.list();
-      set({ game, selectedSaveId: saveId, saves, loading: false });
+      set({ game, selectedSaveId: saveId, saves, loading: false, advanceWeekConfirmation: null });
+      return true;
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to advance week." });
+      return false;
     }
+  },
+  dismissAdvanceWeekConfirmation: () => {
+    set((state) => ({
+      advanceWeekConfirmation: null,
+      error: state.error === state.advanceWeekConfirmation?.message ? null : state.error,
+    }));
   },
   moveLineupPlayer: (fromIndex, toIndex) => {
     const current = get().game;
@@ -176,7 +223,7 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
       ...current.teams[teamId].activeLineup,
       battingOrderPlayerIds: lineup,
     });
-    set({ game: nextGame });
+    set({ game: nextGame, advanceWeekConfirmation: null, error: null });
   },
   replaceLineupPlayer: (lineupIndex, playerId) => {
     const current = get().game;
@@ -197,7 +244,7 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
       battingOrderPlayerIds: lineup,
     });
 
-    set({ game: nextGame });
+    set({ game: nextGame, advanceWeekConfirmation: null, error: null });
   },
   moveRotationPlayer: (fromIndex, toIndex) => {
     const current = get().game;
@@ -207,7 +254,7 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
     if (toIndex < 0 || toIndex >= rotation.length || fromIndex === toIndex) return;
     const [playerId] = rotation.splice(fromIndex, 1);
     rotation.splice(toIndex, 0, playerId);
-    set({ game: setRotationAction(current, teamId, rotation) });
+    set({ game: setRotationAction(current, teamId, rotation), advanceWeekConfirmation: null, error: null });
   },
   adjustTicketPrice: (delta) => {
     const current = get().game;
@@ -236,7 +283,7 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
     if (!current) return;
     const teamId = current.world.userTeamId;
     try {
-      set({ game: releasePlayerAction(current, teamId, playerId), error: null });
+      set({ game: releasePlayerAction(current, teamId, playerId), error: null, advanceWeekConfirmation: null });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "Failed to release player." });
     }
@@ -246,7 +293,7 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
     if (!current) return;
     const teamId = current.world.userTeamId;
     try {
-      set({ game: signFreeAgentAction(current, teamId, playerId), error: null });
+      set({ game: signFreeAgentAction(current, teamId, playerId), error: null, advanceWeekConfirmation: null });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "Failed to sign player." });
     }
