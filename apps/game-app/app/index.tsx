@@ -1,4 +1,4 @@
-import { Link } from "expo-router";
+import { Link, Redirect } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { getDashboardSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
@@ -45,6 +45,10 @@ export default function HomeScreen() {
         {error ? <Text style={{ color: "#b91c1c" }}>{error}</Text> : null}
       </View>
     );
+  }
+
+  if (!game.story.introCompleted) {
+    return <Redirect href="/intro" />;
   }
 
   const dashboard = getDashboardSnapshot(game);

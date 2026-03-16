@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import {
   advanceWeek as advanceWeekAction,
+  completeIntro as completeIntroAction,
   createLocalSaveRepository,
   createNewGame as createNewGameAction,
   expandStadiumCapacity as expandStadiumCapacityAction,
@@ -47,6 +48,7 @@ type GameSessionState = {
   error: string | null;
   refreshSaves: () => Promise<void>;
   createNewGame: () => Promise<void>;
+  completeIntro: () => Promise<void>;
   loadSave: (saveId: string) => Promise<void>;
   deleteSave: (saveId: string) => Promise<void>;
   saveGame: () => Promise<void>;
@@ -90,6 +92,19 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
       set({ game, saves, selectedSaveId: saveId, loading: false });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to create game." });
+    }
+  },
+  completeIntro: async () => {
+    const current = get().game;
+    if (!current || current.story.introCompleted) return;
+    set({ loading: true, error: null });
+    try {
+      const game = completeIntroAction(current);
+      const saveId = await persistCurrentGame(game, get().selectedSaveId);
+      const saves = await repository.list();
+      set({ game, selectedSaveId: saveId, saves, loading: false });
+    } catch (error) {
+      set({ loading: false, error: error instanceof Error ? error.message : "Failed to complete intro." });
     }
   },
   loadSave: async (saveId: string) => {
