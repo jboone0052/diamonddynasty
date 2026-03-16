@@ -253,6 +253,8 @@ export function createNewGame(seed = createInitialSeed()): GameState {
       sponsorRevenueMonthly: economyConfig.baseSponsorRevenueMonthly,
       lastMonthRevenueBreakdown: makeBreakdown(),
       lastMonthExpenseBreakdown: makeExpenseBreakdown(),
+      seasonRevenueBreakdown: makeBreakdown(),
+      seasonExpenseBreakdown: makeExpenseBreakdown(),
     };
 
     facilities[base.id] = {
@@ -338,7 +340,7 @@ export function createNewGame(seed = createInitialSeed()): GameState {
 
   return {
     meta: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       createdAt: now,
       updatedAt: now,
       gameVersion: "0.2.0",
@@ -432,3 +434,5 @@ export function createNewGame(seed = createInitialSeed()): GameState {
     pendingActions: [],
   };
 }
+
+

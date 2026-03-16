@@ -348,6 +348,8 @@ export type TeamFinanceState = {
   sponsorRevenueMonthly: number;
   lastMonthRevenueBreakdown: RevenueBreakdown;
   lastMonthExpenseBreakdown: ExpenseBreakdown;
+  seasonRevenueBreakdown: RevenueBreakdown;
+  seasonExpenseBreakdown: ExpenseBreakdown;
 };
 
 export type SimSummary = {
@@ -513,3 +515,4 @@ export type GameState = {
   pendingActions: PendingAction[];
   seasonSummary?: SeasonSummary;
 };
+

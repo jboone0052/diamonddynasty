@@ -1,7 +1,7 @@
 import { GameState } from "../types/gameState";
 import { GameStateSchema } from "../schemas/gameStateSchema";
 
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 const SAVE_INDEX_KEY = "baseball-sim:save-index";
 const SAVE_PREFIX = "baseball-sim:save:";
 
@@ -19,6 +19,30 @@ export type SaveStorageAdapter = {
   setItem: (key: string, value: string) => Promise<void>;
   removeItem: (key: string) => Promise<void>;
 };
+
+function createEmptyRevenueBreakdown() {
+  return {
+    ticketSales: 0,
+    sponsorships: 0,
+    merchandise: 0,
+    playoffRevenue: 0,
+    transferFees: 0,
+    other: 0,
+  };
+}
+
+function createEmptyExpenseBreakdown() {
+  return {
+    payroll: 0,
+    staff: 0,
+    travel: 0,
+    upkeep: 0,
+    scouting: 0,
+    marketing: 0,
+    debtService: 0,
+    other: 0,
+  };
+}
 
 function createMemoryStorage(): SaveStorageAdapter {
   const store = new Map<string, string>();
@@ -57,12 +81,37 @@ function createDefaultStorage(): SaveStorageAdapter {
   };
 }
 
+function normalizeFinanceState(save: Record<string, unknown>) {
+  const rawFinances = save.finances;
+  if (!rawFinances || typeof rawFinances !== "object") {
+    return;
+  }
+
+  Object.values(rawFinances as Record<string, Record<string, unknown>>).forEach((finance) => {
+    if (!finance || typeof finance !== "object") {
+      return;
+    }
+
+    if (!finance.seasonRevenueBreakdown) {
+      finance.seasonRevenueBreakdown = createEmptyRevenueBreakdown();
+    }
+    if (!finance.seasonExpenseBreakdown) {
+      finance.seasonExpenseBreakdown = createEmptyExpenseBreakdown();
+    }
+  });
+}
+
 export function serializeGameState(state: GameState): string {
   return JSON.stringify(state);
 }
 
 export function migrateGameState(save: unknown): GameState {
-  const parsed = GameStateSchema.parse(save) as GameState;
+  const normalized = save as Record<string, unknown>;
+  if (normalized && typeof normalized === "object") {
+    normalizeFinanceState(normalized);
+  }
+
+  const parsed = GameStateSchema.parse(normalized) as GameState;
   if (parsed.meta.schemaVersion !== CURRENT_SCHEMA_VERSION) {
     parsed.meta.schemaVersion = CURRENT_SCHEMA_VERSION;
   }

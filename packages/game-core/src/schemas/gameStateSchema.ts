@@ -327,6 +327,8 @@ export const TeamFinanceStateSchema = z.object({
   sponsorRevenueMonthly: z.number().int().min(0),
   lastMonthRevenueBreakdown: RevenueBreakdownSchema,
   lastMonthExpenseBreakdown: ExpenseBreakdownSchema,
+  seasonRevenueBreakdown: RevenueBreakdownSchema,
+  seasonExpenseBreakdown: ExpenseBreakdownSchema,
 });
 
 export const SimSummarySchema = z.object({
@@ -490,3 +492,4 @@ export const GameStateSchema = z.object({
   pendingActions: z.array(PendingActionSchema),
   seasonSummary: SeasonSummarySchema.optional(),
 });
+
