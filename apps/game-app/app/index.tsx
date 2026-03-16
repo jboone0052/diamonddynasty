@@ -1,9 +1,9 @@
-import { Link, Redirect } from "expo-router";
+import { Link, Redirect, useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getDashboardSnapshot } from "@baseball-sim/game-core";
+import { getDashboardSnapshot, getLatestCompletedWeek } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
 
-function NavButton({ href, label }: { href: "/roster" | "/lineup" | "/standings" | "/schedule" | "/finances" | "/promotion" | "/inbox" | "/summary" | "/saves"; label: string }) {
+function NavButton({ href, label }: { href: "/results" | "/roster" | "/lineup" | "/standings" | "/schedule" | "/finances" | "/promotion" | "/inbox" | "/summary" | "/saves"; label: string }) {
   return (
     <Link href={href} asChild>
       <Pressable style={{ padding: 12, borderWidth: 1, borderRadius: 8 }}>
@@ -23,6 +23,7 @@ function DashboardCard({ label, value }: { label: string; value: string }) {
 }
 
 export default function HomeScreen() {
+  const router = useRouter();
   const { game, saves, loading, error, createNewGame, loadSave, advanceWeek, saveGame, refreshSaves } = useGameSessionStore();
 
   if (!game) {
@@ -52,9 +53,20 @@ export default function HomeScreen() {
   }
 
   const dashboard = getDashboardSnapshot(game);
+  const latestCompletedWeek = getLatestCompletedWeek(game);
   const nextOpponent = dashboard.nextGame
     ? `${game.teams[dashboard.nextGame.awayTeamId].nickname} @ ${game.teams[dashboard.nextGame.homeTeamId].nickname}`
     : "Season complete";
+
+  const handleAdvanceWeek = async () => {
+    if (loading || game.world.seasonStatus === "completed") {
+      return;
+    }
+
+    const completedWeek = game.world.currentWeek;
+    await advanceWeek();
+    router.push({ pathname: "/results", params: { week: String(completedWeek) } });
+  };
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12, backgroundColor: "#f8fafc" }}>
@@ -68,13 +80,14 @@ export default function HomeScreen() {
       <DashboardCard label="Unread Mail" value={String(dashboard.unreadCount)} />
       <DashboardCard label="Next Game" value={nextOpponent} />
 
-      <Pressable onPress={advanceWeek} style={{ padding: 12, backgroundColor: "#1f2937", borderRadius: 8 }}>
+      <Pressable onPress={handleAdvanceWeek} style={{ padding: 12, backgroundColor: "#1f2937", borderRadius: 8 }}>
         <Text style={{ color: "white", fontWeight: "600" }}>{loading ? "Advancing..." : game.world.seasonStatus === "completed" ? "Season Complete" : "Advance Week"}</Text>
       </Pressable>
       <Pressable onPress={saveGame} style={{ padding: 12, borderWidth: 1, borderRadius: 8, borderColor: "#cbd5e1", backgroundColor: "white" }}>
         <Text style={{ color: "#0f172a" }}>{loading ? "Saving..." : "Save Game"}</Text>
       </Pressable>
 
+      {latestCompletedWeek ? <NavButton href="/results" label="Latest Results" /> : null}
       <NavButton href="/roster" label="Roster" />
       <NavButton href="/lineup" label="Lineup" />
       <NavButton href="/standings" label="Standings" />

@@ -71,3 +71,53 @@ export function getPromotionStatus(state: GameState) {
     seasonSummary: state.seasonSummary,
   };
 }
+
+export function getLatestCompletedWeek(state: GameState) {
+  const completedWeeks = Object.values(state.schedule)
+    .filter((game: ScheduledGame) => game.status === "completed")
+    .map((game: ScheduledGame) => game.week);
+
+  if (completedWeeks.length === 0) {
+    return null;
+  }
+
+  return Math.max(...completedWeeks);
+}
+
+export function getWeeklyResultsSnapshot(state: GameState, requestedWeek?: number) {
+  const latestWeek = getLatestCompletedWeek(state);
+  const resolvedWeek = requestedWeek ?? latestWeek;
+
+  if (!resolvedWeek) {
+    return null;
+  }
+
+  const leagueId = state.teams[state.world.userTeamId].leagueId;
+  const games = Object.values(state.schedule)
+    .filter((game: ScheduledGame) => game.leagueId === leagueId && game.week === resolvedWeek && game.status === "completed" && game.result)
+    .sort((a: ScheduledGame, b: ScheduledGame) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+
+  if (games.length === 0) {
+    return null;
+  }
+
+  const userTeamId = state.world.userTeamId;
+  const userGame = games.find((game) => game.homeTeamId === userTeamId || game.awayTeamId === userTeamId);
+  const totalRuns = games.reduce((sum, game) => sum + (game.result?.homeScore ?? 0) + (game.result?.awayScore ?? 0), 0);
+  const totalAttendance = games.reduce((sum, game) => sum + (game.result?.attendance ?? 0), 0);
+  const standings = getStandingsSnapshot(state, leagueId);
+  const standingsRow = standings.find((row) => row.teamId === userTeamId)!;
+  const ranking = standings.findIndex((row) => row.teamId === userTeamId) + 1;
+
+  return {
+    week: resolvedWeek,
+    games,
+    userGame,
+    totalRuns,
+    totalAttendance,
+    averageAttendance: Math.round(totalAttendance / games.length),
+    standingsRow,
+    ranking,
+    seasonSummary: state.seasonSummary,
+  };
+}

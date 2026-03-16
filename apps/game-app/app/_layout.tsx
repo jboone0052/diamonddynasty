@@ -7,6 +7,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerTitleAlign: "center", contentStyle: { backgroundColor: "#f8fafc" } }}>
         <Stack.Screen name="index" options={{ title: "Franchise Dashboard" }} />
         <Stack.Screen name="intro" options={{ title: "Club Inheritance" }} />
+        <Stack.Screen name="results" options={{ title: "Weekly Results" }} />
         <Stack.Screen name="roster" options={{ title: "Roster" }} />
         <Stack.Screen name="lineup" options={{ title: "Lineup" }} />
         <Stack.Screen name="standings" options={{ title: "Standings" }} />

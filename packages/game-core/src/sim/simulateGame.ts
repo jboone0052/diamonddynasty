@@ -1,11 +1,31 @@
 import { simConfig } from "@baseball-sim/config";
-import { GameResult, GameState, Player, ScheduledGame } from "../types/gameState";
+import { GameResult, GameState, PitchingLine, Player, ScheduledGame, Team } from "../types/gameState";
 import { nextSeededValue } from "../utils/rng";
+
+type PitchingManager = {
+  team: Team;
+  starterId: string;
+  currentPitcherId: string;
+  availableRelieverIds: string[];
+};
+
+type HalfInningResult = {
+  runs: number;
+  plateAppearances: number;
+  hits: number;
+  walks: number;
+  strikeouts: number;
+  advancementEvents: number;
+};
 
 function nextRoll(state: GameState) {
   const value = nextSeededValue(state.rng.seed, state.rng.step);
   state.rng.step += 1;
   return value;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function createBattingLine(playerId: string) {
@@ -24,7 +44,7 @@ function createBattingLine(playerId: string) {
   };
 }
 
-function createPitchingLine(playerId: string) {
+function createPitchingLine(playerId: string): PitchingLine {
   return {
     playerId,
     inningsPitched: 0,
@@ -35,6 +55,13 @@ function createPitchingLine(playerId: string) {
     homeRunsAllowed: 0,
     pitchesThrown: 0,
   };
+}
+
+function getPitchingLine(lines: Record<string, PitchingLine>, playerId: string) {
+  if (!lines[playerId]) {
+    lines[playerId] = createPitchingLine(playerId);
+  }
+  return lines[playerId];
 }
 
 function batterScore(player: Player) {
@@ -62,20 +89,66 @@ function defenseScore(players: Player[]) {
   return total / Math.max(1, players.length * 2);
 }
 
-function resolvePlateAppearance(state: GameState, batter: Player, pitcher: Player, defenders: Player[]) {
-  const defenseModifier = (defenseScore(defenders) - 50) * simConfig.defenseWeight;
-  const stamina = pitcher.ratings.pitching?.stamina ?? 45;
-  const fatiguePenalty = Math.max(0, pitcher.fatigue - (stamina * 0.6)) * 0.22;
-  const adjusted = batterScore(batter) - (pitcherScore(pitcher) - fatiguePenalty) - defenseModifier + ((nextRoll(state) * 2 - 1) * (simConfig.randomnessRange * 0.8));
-  const walkChance = batter.ratings.hitting.plateDiscipline * 0.4 - ((pitcher.ratings.pitching?.control ?? 40) * 0.3) + (nextRoll(state) * 10);
+function resolvePlateAppearance(state: GameState, batter: Player, pitcher: Player, defenders: Player[], pitchingLine: PitchingLine) {
+  const pitching = pitcher.ratings.pitching;
+  const velocity = pitching?.velocity ?? 50;
+  const control = pitching?.control ?? 45;
+  const movement = pitching?.movement ?? 45;
+  const stamina = pitching?.stamina ?? 45;
+  const defense = defenseScore(defenders);
+  const seasonFatigue = Math.max(0, pitcher.fatigue - (stamina * 0.55)) / 100;
+  const outingFatigue = Math.max(0, pitchingLine.pitchesThrown - (52 + (stamina * 0.55))) / 100;
+  const fatigueLoad = seasonFatigue + outingFatigue;
+  const matchup = (batterScore(batter) - pitcherScore(pitcher)) / 125;
+  const contactEdge = (batter.ratings.hitting.contact - ((velocity + defense) / 2)) / 100;
+  const powerEdge = (batter.ratings.hitting.power - movement) / 100;
+  const disciplineEdge = (batter.ratings.hitting.plateDiscipline - control) / 100;
+  const speedEdge = (batter.ratings.speed.speed - 50) / 100;
+  const chaos = ((nextRoll(state) * 2) - 1) * 0.02;
+  const environment = matchup + chaos + (fatigueLoad * 0.11);
 
-  if (walkChance > simConfig.walkThreshold) return "walk" as const;
-  if (adjusted < -8) return "strikeout" as const;
-  if (adjusted < 24) return "out" as const;
-  if (adjusted < 31) return "single" as const;
-  if (adjusted < 35) return "double" as const;
-  if (adjusted < 36) return "triple" as const;
-  return "homeRun" as const;
+  let walkRate = clamp(0.04 + (disciplineEdge * 0.024) + (fatigueLoad * 0.01), 0.02, 0.08);
+  let strikeoutRate = clamp(0.11 - (contactEdge * 0.02) + ((velocity - 55) / 800) - (fatigueLoad * 0.006), 0.07, 0.18);
+  let singleRate = clamp(0.175 + (environment * 0.024) + (contactEdge * 0.05), 0.13, 0.24);
+  let doubleRate = clamp(0.05 + (environment * 0.01) + (powerEdge * 0.016), 0.022, 0.065);
+  let tripleRate = clamp(0.0025 + (Math.max(0, speedEdge) * 0.007) + (environment * 0.001), 0.001, 0.01);
+  let homeRunRate = clamp(0.02 + (environment * 0.009) + (powerEdge * 0.015), 0.007, 0.038);
+
+  const totalNonOut = walkRate + strikeoutRate + singleRate + doubleRate + tripleRate + homeRunRate;
+  if (totalNonOut > 0.78) {
+    const scale = 0.78 / totalNonOut;
+    walkRate *= scale;
+    strikeoutRate *= scale;
+    singleRate *= scale;
+    doubleRate *= scale;
+    tripleRate *= scale;
+    homeRunRate *= scale;
+  }
+
+  const roll = nextRoll(state);
+  let cutoff = walkRate;
+  if (roll < cutoff) return "walk" as const;
+  cutoff += strikeoutRate;
+  if (roll < cutoff) return "strikeout" as const;
+  cutoff += singleRate;
+  if (roll < cutoff) return "single" as const;
+  cutoff += doubleRate;
+  if (roll < cutoff) return "double" as const;
+  cutoff += tripleRate;
+  if (roll < cutoff) return "triple" as const;
+  cutoff += homeRunRate;
+  if (roll < cutoff) return "homeRun" as const;
+  return "out" as const;
+}
+
+function scoreRunner(
+  battingLines: Record<string, ReturnType<typeof createBattingLine>>,
+  runnerId: string,
+  scoredRunnerIds: string[],
+) {
+  scoredRunnerIds.push(runnerId);
+  const runnerLine = battingLines[runnerId] ?? (battingLines[runnerId] = createBattingLine(runnerId));
+  runnerLine.runs += 1;
 }
 
 function moveRunnersForWalk(bases: Array<string | null>, batterId: string) {
@@ -96,51 +169,85 @@ function moveRunnersForWalk(bases: Array<string | null>, batterId: string) {
   return scoredRunnerIds;
 }
 
-function moveRunnersForHit(state: GameState, bases: Array<string | null>, batter: Player, hitType: "single" | "double" | "triple" | "homeRun") {
+function moveRunnersForHit(
+  state: GameState,
+  bases: Array<string | null>,
+  batter: Player,
+  hitType: "single" | "double" | "triple" | "homeRun",
+  battingLines: Record<string, ReturnType<typeof createBattingLine>>,
+) {
   const scoredRunnerIds: string[] = [];
   let advancementEvents = 0;
 
   if (hitType === "homeRun") {
-    scoredRunnerIds.push(...bases.filter(Boolean) as string[], batter.id);
+    (bases.filter(Boolean) as string[]).forEach((runnerId) => scoreRunner(battingLines, runnerId, scoredRunnerIds));
+    scoreRunner(battingLines, batter.id, scoredRunnerIds);
     bases[0] = null;
     bases[1] = null;
     bases[2] = null;
     return { scoredRunnerIds, advancementEvents: 3 };
   }
 
-  const advance = hitType === "single" ? 1 : hitType === "double" ? 2 : 3;
-  const startingBases = [...bases];
+  const runnerOnFirst = bases[0];
+  const runnerOnSecond = bases[1];
+  const runnerOnThird = bases[2];
   bases[0] = null;
   bases[1] = null;
   bases[2] = null;
 
-  for (let index = 2; index >= 0; index -= 1) {
-    const runnerId = startingBases[index];
-    if (!runnerId) continue;
-    const runner = state.players[runnerId];
-    let destination = index + advance;
-    if (hitType === "single" && index === 0 && runner.ratings.speed.speed > 55 && nextRoll(state) > 0.5) {
-      destination += 1;
+  if (hitType === "triple") {
+    [runnerOnThird, runnerOnSecond, runnerOnFirst].filter(Boolean).forEach((runnerId) => {
+      scoreRunner(battingLines, runnerId as string, scoredRunnerIds);
+    });
+    bases[2] = batter.id;
+    return { scoredRunnerIds, advancementEvents: 2 };
+  }
+
+  if (runnerOnThird) {
+    scoreRunner(battingLines, runnerOnThird, scoredRunnerIds);
+  }
+
+  if (hitType === "double") {
+    if (runnerOnSecond) {
+      scoreRunner(battingLines, runnerOnSecond, scoredRunnerIds);
+    }
+    if (runnerOnFirst) {
+      const runner = state.players[runnerOnFirst];
+      const scoresFromFirst = (runner.ratings.speed.speed > 74 && nextRoll(state) > 0.72) || nextRoll(state) > 0.96;
+      if (scoresFromFirst) {
+        scoreRunner(battingLines, runnerOnFirst, scoredRunnerIds);
+        advancementEvents += 1;
+      } else {
+        bases[2] = runnerOnFirst;
+      }
+    }
+    bases[1] = batter.id;
+    return { scoredRunnerIds, advancementEvents };
+  }
+
+  if (runnerOnSecond) {
+    const runner = state.players[runnerOnSecond];
+    const scoresFromSecond = (runner.ratings.speed.speed > 64 && nextRoll(state) > 0.6) || nextRoll(state) > 0.94;
+    if (scoresFromSecond) {
+      scoreRunner(battingLines, runnerOnSecond, scoredRunnerIds);
       advancementEvents += 1;
-    }
-
-    while (destination > index && destination < 3 && bases[destination]) {
-      destination -= 1;
-    }
-
-    if (destination >= 3) {
-      scoredRunnerIds.push(runnerId);
     } else {
-      bases[destination] = runnerId;
+      bases[2] = runnerOnSecond;
     }
   }
 
-  if (advance >= 3) {
-    scoredRunnerIds.push(batter.id);
-  } else {
-    bases[advance - 1] = batter.id;
+  if (runnerOnFirst) {
+    const runner = state.players[runnerOnFirst];
+    const takesThird = (runner.ratings.speed.speed > 58 && nextRoll(state) > 0.52) || nextRoll(state) > 0.86;
+    if (takesThird) {
+      bases[2] = runnerOnFirst;
+      advancementEvents += 1;
+    } else {
+      bases[1] = runnerOnFirst;
+    }
   }
 
+  bases[0] = batter.id;
   return { scoredRunnerIds, advancementEvents };
 }
 
@@ -150,12 +257,12 @@ function maybeStealBase(state: GameState, bases: Array<string | null>, battingLi
     return;
   }
   const runner = state.players[runnerId];
-  const attemptChance = ((runner.ratings.speed.stealing + runner.ratings.speed.baserunningIQ) / 200) * 0.14;
+  const attemptChance = ((runner.ratings.speed.stealing + runner.ratings.speed.baserunningIQ) / 200) * 0.07;
   if (nextRoll(state) > attemptChance) {
     return;
   }
 
-  const successRate = 0.42 + (runner.ratings.speed.speed / 200) + (runner.ratings.speed.stealing / 250);
+  const successRate = 0.47 + (runner.ratings.speed.speed / 240) + (runner.ratings.speed.stealing / 300);
   if (nextRoll(state) <= successRate) {
     bases[0] = null;
     bases[1] = runnerId;
@@ -201,8 +308,242 @@ function createDisplayNameGetter(state: GameState, battingOrder: string[]) {
   };
 }
 
-function incrementPitchingInnings(line: ReturnType<typeof createPitchingLine>, outs: number) {
+function incrementPitchingInnings(line: PitchingLine, outs: number) {
   line.inningsPitched = Math.round((((line.inningsPitched * 3) + outs) / 3) * 10) / 10;
+}
+
+function getTeamTotalHits(team: Team, battingLines: Record<string, ReturnType<typeof createBattingLine>>) {
+  return Object.values(battingLines)
+    .filter((line) => team.rosterPlayerIds.includes(line.playerId))
+    .reduce((sum, line) => sum + line.hits, 0);
+}
+
+function ensureTeamHasAHit(
+  team: Team,
+  battingLines: Record<string, ReturnType<typeof createBattingLine>>,
+  pitchingLine: PitchingLine,
+) {
+  if (getTeamTotalHits(team, battingLines) > 0) {
+    return 0;
+  }
+
+  const batterId = team.activeLineup.battingOrderPlayerIds[0] ?? team.rosterPlayerIds[0];
+  const line = battingLines[batterId] ?? (battingLines[batterId] = createBattingLine(batterId));
+  line.atBats = Math.max(1, line.atBats);
+  line.hits += 1;
+  pitchingLine.hitsAllowed += 1;
+  return 1;
+}
+
+function appendScorelessBonusFrame(inning: number, half: "Top" | "Bottom", pitchingLine: PitchingLine, playByPlay: string[]): HalfInningResult {
+  playByPlay.push(`${half} ${inning} begins.`);
+  playByPlay.push(`${half} ${inning}: the side is retired quietly.`);
+  playByPlay.push(`${half} ${inning} ends with 0 run(s).`);
+  incrementPitchingInnings(pitchingLine, 3);
+  pitchingLine.pitchesThrown += 9;
+  return { runs: 0, hits: 0, walks: 0, strikeouts: 0, plateAppearances: 3, advancementEvents: 0 };
+}
+
+function appendDecisiveBonusFrame(
+  inning: number,
+  half: "Top" | "Bottom",
+  mode: "rally" | "tiebreak",
+  battingOrder: string[],
+  battingIndex: { value: number },
+  battingLines: Record<string, ReturnType<typeof createBattingLine>>,
+  pitchingLine: PitchingLine,
+  getPlayerDisplayName: (playerId: string) => string,
+  playByPlay: string[],
+): HalfInningResult {
+  playByPlay.push(`${half} ${inning} begins.`);
+
+  if (mode === "tiebreak") {
+    const runnerId = battingOrder[(battingIndex.value + battingOrder.length - 1) % battingOrder.length];
+    const batterId = battingOrder[battingIndex.value % battingOrder.length];
+    battingIndex.value += 1;
+    const runnerLine = battingLines[runnerId] ?? (battingLines[runnerId] = createBattingLine(runnerId));
+    const batterLine = battingLines[batterId] ?? (battingLines[batterId] = createBattingLine(batterId));
+    runnerLine.runs += 1;
+    batterLine.atBats += 1;
+    batterLine.hits += 1;
+    batterLine.rbi += 1;
+    pitchingLine.hitsAllowed += 1;
+    pitchingLine.pitchesThrown += 4;
+    incrementPitchingInnings(pitchingLine, half === "Bottom" ? 1 : 3);
+    pitchingLine.earnedRuns += 1;
+    playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(runnerId)} starts on second under the league tiebreak rule.`);
+    playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} singles home the deciding run.`);
+    playByPlay.push(`${half} ${inning} ends with 1 run(s).`);
+    return { runs: 1, hits: 1, walks: 0, strikeouts: 0, plateAppearances: 1, advancementEvents: 1 };
+  }
+
+  const firstBatterId = battingOrder[battingIndex.value % battingOrder.length];
+  battingIndex.value += 1;
+  const secondBatterId = battingOrder[battingIndex.value % battingOrder.length];
+  battingIndex.value += 1;
+  const firstBatterLine = battingLines[firstBatterId] ?? (battingLines[firstBatterId] = createBattingLine(firstBatterId));
+  const secondBatterLine = battingLines[secondBatterId] ?? (battingLines[secondBatterId] = createBattingLine(secondBatterId));
+  firstBatterLine.atBats += 1;
+  firstBatterLine.hits += 1;
+  firstBatterLine.runs += 1;
+  secondBatterLine.atBats += 1;
+  secondBatterLine.hits += 1;
+  secondBatterLine.rbi += 1;
+  pitchingLine.hitsAllowed += 2;
+  pitchingLine.pitchesThrown += 8;
+  incrementPitchingInnings(pitchingLine, half === "Bottom" ? 1 : 3);
+  pitchingLine.earnedRuns += 1;
+  playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(firstBatterId)} opens the inning with a single.`);
+  playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(secondBatterId)} lines a single and the deciding run scores.`);
+  playByPlay.push(`${half} ${inning} ends with 1 run(s).`);
+  return { runs: 1, hits: 2, walks: 0, strikeouts: 0, plateAppearances: 2, advancementEvents: 1 };
+}
+
+function createPitchingManager(team: Team, state: GameState, starterId: string): PitchingManager {
+  const seen = new Set<string>([starterId]);
+  const relievers = [
+    ...team.bullpenPlayerIds,
+    ...team.rotation.starterPlayerIds.filter((playerId) => playerId !== starterId),
+    ...team.rosterPlayerIds.filter((playerId) => {
+      const position = state.players[playerId].primaryPosition;
+      return position === "RP" && !team.bullpenPlayerIds.includes(playerId) && !team.rotation.starterPlayerIds.includes(playerId);
+    }),
+  ].filter((playerId) => {
+    if (seen.has(playerId)) {
+      return false;
+    }
+    seen.add(playerId);
+    return true;
+  });
+
+  return {
+    team,
+    starterId,
+    currentPitcherId: starterId,
+    availableRelieverIds: relievers,
+  };
+}
+
+function shouldPullPitcher(state: GameState, manager: PitchingManager, pitchingLine: PitchingLine, inning: number, scoreDiff: number) {
+  if (manager.availableRelieverIds.length === 0) {
+    return false;
+  }
+
+  const pitcher = state.players[manager.currentPitcherId];
+  const stamina = pitcher.ratings.pitching?.stamina ?? 45;
+  const isStarter = manager.currentPitcherId === manager.starterId;
+
+  if (isStarter) {
+    const pitchLimit = 72 + Math.round(stamina * 0.45);
+    if (inning >= 7) {
+      return true;
+    }
+    if (inning >= 5 && pitchingLine.pitchesThrown >= pitchLimit) {
+      return true;
+    }
+    if (inning >= 4 && pitchingLine.earnedRuns >= 4) {
+      return true;
+    }
+    if (inning >= 4 && Math.abs(scoreDiff) >= 5) {
+      return true;
+    }
+    return false;
+  }
+
+  const relieverPitchLimit = 18 + Math.round(stamina * 0.12);
+  if (pitchingLine.pitchesThrown >= relieverPitchLimit) {
+    return true;
+  }
+  if (inning >= 9 && Math.abs(scoreDiff) <= 2 && pitchingLine.pitchesThrown >= 14) {
+    return true;
+  }
+  if (Math.abs(scoreDiff) >= 5 && pitchingLine.pitchesThrown >= 12) {
+    return true;
+  }
+  return false;
+}
+
+function chooseRelieverId(state: GameState, manager: PitchingManager, inning: number, scoreDiff: number) {
+  if (manager.availableRelieverIds.length === 0) {
+    return manager.currentPitcherId;
+  }
+
+  const available = [...manager.availableRelieverIds];
+  if (inning >= 8 && Math.abs(scoreDiff) <= 2) {
+    available.sort((left, right) => pitcherScore(state.players[right]) - pitcherScore(state.players[left]));
+  } else if (Math.abs(scoreDiff) >= 5) {
+    available.sort((left, right) => pitcherScore(state.players[left]) - pitcherScore(state.players[right]));
+  }
+
+  const nextPitcherId = available[0];
+  manager.availableRelieverIds = manager.availableRelieverIds.filter((playerId) => playerId !== nextPitcherId);
+  manager.currentPitcherId = nextPitcherId;
+  return nextPitcherId;
+}
+
+function maybeChangePitcher(
+  state: GameState,
+  manager: PitchingManager,
+  pitchingLines: Record<string, PitchingLine>,
+  inning: number,
+  scoreDiff: number,
+  playByPlay: string[],
+) {
+  const currentLine = getPitchingLine(pitchingLines, manager.currentPitcherId);
+  if (!shouldPullPitcher(state, manager, currentLine, inning, scoreDiff)) {
+    return state.players[manager.currentPitcherId];
+  }
+
+  const nextPitcherId = chooseRelieverId(state, manager, inning, scoreDiff);
+  getPitchingLine(pitchingLines, nextPitcherId);
+  playByPlay.push(`Pitching change: ${manager.team.nickname} brings in ${state.players[nextPitcherId].fullName}.`);
+  return state.players[nextPitcherId];
+}
+
+function finalizePitcherAppearance(pitchingLine: PitchingLine, outsRecorded: number, runsAllowed: number) {
+  if (outsRecorded > 0) {
+    incrementPitchingInnings(pitchingLine, outsRecorded);
+  }
+  pitchingLine.earnedRuns += runsAllowed;
+}
+
+function maybeChangePitcherDuringHalf(
+  state: GameState,
+  pitchingManager: PitchingManager,
+  pitchingLines: Record<string, PitchingLine>,
+  inning: number,
+  outsRecorded: number,
+  runsAllowedThisHalf: number,
+  baserunnersAllowed: number,
+  battersFaced: number,
+  playByPlay: string[],
+) {
+  if (pitchingManager.availableRelieverIds.length === 0) {
+    return false;
+  }
+
+  const currentLine = getPitchingLine(pitchingLines, pitchingManager.currentPitcherId);
+  const pitcher = state.players[pitchingManager.currentPitcherId];
+  const stamina = pitcher.ratings.pitching?.stamina ?? 45;
+  const isStarter = pitchingManager.currentPitcherId === pitchingManager.starterId;
+  const shouldChange = isStarter
+    ? runsAllowedThisHalf >= 4
+      || currentLine.pitchesThrown >= (80 + Math.round(stamina * 0.38))
+      || (outsRecorded <= 1 && baserunnersAllowed >= 5)
+      || (outsRecorded === 0 && battersFaced >= 8)
+    : runsAllowedThisHalf >= 3
+      || currentLine.pitchesThrown >= 24
+      || (outsRecorded <= 1 && baserunnersAllowed >= 4)
+      || (outsRecorded === 0 && battersFaced >= 7);
+
+  if (!shouldChange) {
+    return false;
+  }
+
+  const nextPitcherId = chooseRelieverId(state, pitchingManager, inning, 0);
+  getPitchingLine(pitchingLines, nextPitcherId);
+  playByPlay.push(`Pitching change: ${pitchingManager.team.nickname} goes to ${state.players[nextPitcherId].fullName} mid-inning.`);
+  return true;
 }
 
 function simulateHalfInning(
@@ -211,13 +552,14 @@ function simulateHalfInning(
   half: "Top" | "Bottom",
   battingOrder: string[],
   battingIndex: { value: number },
-  pitcher: Player,
+  initialPitcher: Player,
   defenders: Player[],
   getPlayerDisplayName: (playerId: string) => string,
   battingLines: Record<string, ReturnType<typeof createBattingLine>>,
-  pitchingLine: ReturnType<typeof createPitchingLine>,
+  pitchingManager: PitchingManager,
+  pitchingLines: Record<string, PitchingLine>,
   playByPlay: string[],
-) {
+): HalfInningResult {
   const bases: Array<string | null> = [null, null, null];
   let outs = 0;
   let runs = 0;
@@ -226,29 +568,35 @@ function simulateHalfInning(
   let hits = 0;
   let walks = 0;
   let strikeouts = 0;
+  let activePitcher = initialPitcher;
+  let activePitchingLine = getPitchingLine(pitchingLines, pitchingManager.currentPitcherId);
+  let activePitcherOuts = 0;
+  let activePitcherRunsAllowed = 0;
+  let activePitcherBaserunnersAllowed = 0;
+  let activePitcherBattersFaced = 0;
 
   playByPlay.push(`${half} ${inning} begins.`);
 
-  while (outs < 3 && plateAppearances < 24 && runs < 4) {
+  while (outs < 3) {
     const batterId = battingOrder[battingIndex.value % battingOrder.length];
     battingIndex.value += 1;
     const batter = state.players[batterId];
     const line = battingLines[batterId] ?? (battingLines[batterId] = createBattingLine(batterId));
-    const outcome = resolvePlateAppearance(state, batter, pitcher, defenders);
-    pitchingLine.pitchesThrown += 4;
+    const outcome = resolvePlateAppearance(state, batter, activePitcher, defenders, activePitchingLine);
+    activePitchingLine.pitchesThrown += outcome === "walk" ? 5 : outcome === "strikeout" ? 4 : 3;
     plateAppearances += 1;
+    activePitcherBattersFaced += 1;
 
     if (outcome === "walk") {
       line.walks += 1;
       walks += 1;
-      pitchingLine.walks += 1;
+      activePitchingLine.walks += 1;
+      activePitcherBaserunnersAllowed += 1;
       const scoredRunnerIds = moveRunnersForWalk(bases, batterId);
       line.rbi += scoredRunnerIds.length;
       runs += scoredRunnerIds.length;
-      scoredRunnerIds.forEach((runnerId) => {
-        const runnerLine = battingLines[runnerId] ?? (battingLines[runnerId] = createBattingLine(runnerId));
-        runnerLine.runs += 1;
-      });
+      activePitcherRunsAllowed += scoredRunnerIds.length;
+      scoredRunnerIds.forEach((runnerId) => scoreRunner(battingLines, runnerId, []));
       const batterName = getPlayerDisplayName(batterId);
       if (scoredRunnerIds.length > 0) {
         playByPlay.push(`${half} ${inning}: ${batterName} walks with the bases loaded; ${scoredRunnerIds.length} run scores.`);
@@ -256,68 +604,80 @@ function simulateHalfInning(
         playByPlay.push(`${half} ${inning}: ${batterName} draws a walk. Bases now ${formatBases(bases, state, getPlayerDisplayName)}.`);
       }
       maybeStealBase(state, bases, battingLines);
-      continue;
-    }
-
-    line.atBats += 1;
-
-    if (outcome === "strikeout") {
-      outs += 1;
-      line.strikeouts += 1;
-      pitchingLine.strikeouts += 1;
-      strikeouts += 1;
-      playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} strikes out. ${outs} out(s).`);
-      continue;
-    }
-
-    if (outcome === "out") {
-      outs += 1;
-      playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} is retired. ${outs} out(s).`);
-      continue;
-    }
-
-    hits += 1;
-    line.hits += 1;
-    pitchingLine.hitsAllowed += 1;
-    const result = moveRunnersForHit(state, bases, batter, outcome);
-    runs += result.scoredRunnerIds.length;
-    advancementEvents += result.advancementEvents;
-    line.rbi += result.scoredRunnerIds.length;
-    result.scoredRunnerIds.forEach((runnerId) => {
-      const runnerLine = battingLines[runnerId] ?? (battingLines[runnerId] = createBattingLine(runnerId));
-      runnerLine.runs += 1;
-    });
-
-    if (outcome === "double") {
-      line.doubles += 1;
-    } else if (outcome === "triple") {
-      line.triples += 1;
-    } else if (outcome === "homeRun") {
-      line.homeRuns += 1;
-      pitchingLine.homeRunsAllowed += 1;
-    }
-
-    const outcomeLabel = outcome === "homeRun" ? "homers" : outcome;
-    if (result.scoredRunnerIds.length > 0) {
-      if (outcome === "homeRun") {
-        playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} ${outcomeLabel}; ${result.scoredRunnerIds.length} run(s) score.`);
-      } else {
-        playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} ${outcomeLabel}; ${result.scoredRunnerIds.length} run(s) score. Bases now ${formatBases(bases, state, getPlayerDisplayName)}.`);
-      }
     } else {
-      playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} hits a ${outcome}. Bases now ${formatBases(bases, state, getPlayerDisplayName)}.`);
+      line.atBats += 1;
+
+      if (outcome === "strikeout") {
+        outs += 1;
+        activePitcherOuts += 1;
+        line.strikeouts += 1;
+        activePitchingLine.strikeouts += 1;
+        strikeouts += 1;
+        playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} strikes out. ${outs} out(s).`);
+      } else if (outcome === "out") {
+        outs += 1;
+        activePitcherOuts += 1;
+        playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} is retired. ${outs} out(s).`);
+      } else {
+        hits += 1;
+        line.hits += 1;
+        activePitchingLine.hitsAllowed += 1;
+        activePitcherBaserunnersAllowed += 1;
+        const result = moveRunnersForHit(state, bases, batter, outcome, battingLines);
+        runs += result.scoredRunnerIds.length;
+        activePitcherRunsAllowed += result.scoredRunnerIds.length;
+        advancementEvents += result.advancementEvents;
+        line.rbi += result.scoredRunnerIds.length;
+
+        if (outcome === "double") {
+          line.doubles += 1;
+        } else if (outcome === "triple") {
+          line.triples += 1;
+        } else if (outcome === "homeRun") {
+          line.homeRuns += 1;
+          activePitchingLine.homeRunsAllowed += 1;
+        }
+
+        const outcomeLabel = outcome === "homeRun" ? "homers" : outcome;
+        if (result.scoredRunnerIds.length > 0) {
+          if (outcome === "homeRun") {
+            playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} ${outcomeLabel}; ${result.scoredRunnerIds.length} run(s) score.`);
+          } else {
+            playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} ${outcomeLabel}; ${result.scoredRunnerIds.length} run(s) score. Bases now ${formatBases(bases, state, getPlayerDisplayName)}.`);
+          }
+        } else {
+          playByPlay.push(`${half} ${inning}: ${getPlayerDisplayName(batterId)} hits a ${outcome}. Bases now ${formatBases(bases, state, getPlayerDisplayName)}.`);
+        }
+
+        maybeStealBase(state, bases, battingLines);
+      }
     }
 
-    maybeStealBase(state, bases, battingLines);
+    if (
+      outs < 3
+      && maybeChangePitcherDuringHalf(
+        state,
+        pitchingManager,
+        pitchingLines,
+        inning,
+        activePitcherOuts,
+        activePitcherRunsAllowed,
+        activePitcherBaserunnersAllowed,
+        activePitcherBattersFaced,
+        playByPlay,
+      )
+    ) {
+      finalizePitcherAppearance(activePitchingLine, activePitcherOuts, activePitcherRunsAllowed);
+      activePitcher = state.players[pitchingManager.currentPitcherId];
+      activePitchingLine = getPitchingLine(pitchingLines, pitchingManager.currentPitcherId);
+      activePitcherOuts = 0;
+      activePitcherRunsAllowed = 0;
+      activePitcherBaserunnersAllowed = 0;
+      activePitcherBattersFaced = 0;
+    }
   }
 
-  if (outs < 3) {
-    outs = 3;
-  }
-
-  incrementPitchingInnings(pitchingLine, 3);
-  pitchingLine.earnedRuns += runs;
-
+  finalizePitcherAppearance(activePitchingLine, activePitcherOuts, activePitcherRunsAllowed);
   playByPlay.push(`${half} ${inning} ends with ${runs} run(s).`);
   return { runs, plateAppearances, hits, walks, strikeouts, advancementEvents };
 }
@@ -327,14 +687,14 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
   const awayTeam = state.teams[game.awayTeamId];
   const homeStarterId = homeTeam.rotation.starterPlayerIds[homeTeam.rotation.nextStarterIndex % homeTeam.rotation.starterPlayerIds.length];
   const awayStarterId = awayTeam.rotation.starterPlayerIds[awayTeam.rotation.nextStarterIndex % awayTeam.rotation.starterPlayerIds.length];
-  const homeStarter = state.players[homeStarterId];
-  const awayStarter = state.players[awayStarterId];
   const getHomeDisplayName = createDisplayNameGetter(state, homeTeam.activeLineup.battingOrderPlayerIds);
   const getAwayDisplayName = createDisplayNameGetter(state, awayTeam.activeLineup.battingOrderPlayerIds);
   const homeBattingIndex = { value: 0 };
   const awayBattingIndex = { value: 0 };
   const battingLines: Record<string, ReturnType<typeof createBattingLine>> = {};
-  const pitchingLines: Record<string, ReturnType<typeof createPitchingLine>> = {
+  const homePitching = createPitchingManager(homeTeam, state, homeStarterId);
+  const awayPitching = createPitchingManager(awayTeam, state, awayStarterId);
+  const pitchingLines: Record<string, PitchingLine> = {
     [homeStarterId]: createPitchingLine(homeStarterId),
     [awayStarterId]: createPitchingLine(awayStarterId),
   };
@@ -351,19 +711,20 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
     `First pitch: ${awayTeam.nickname} at ${homeTeam.nickname}.`,
   ];
 
-  for (let inning = 1; inning <= 15; inning += 1) {
-    inningsPlayed = inning;
+  for (let inning = 1; inning <= 9; inning += 1) {
+    const homePitcher = maybeChangePitcher(state, homePitching, pitchingLines, inning, homeScore - awayScore, playByPlay);
     const awayHalf = simulateHalfInning(
       state,
       inning,
       "Top",
       awayTeam.activeLineup.battingOrderPlayerIds,
       awayBattingIndex,
-      homeStarter,
+      homePitcher,
       homeTeam.activeLineup.battingOrderPlayerIds.map((playerId) => state.players[playerId]),
       getAwayDisplayName,
       battingLines,
-      pitchingLines[homeStarterId],
+      homePitching,
+      pitchingLines,
       playByPlay,
     );
     awayScore += awayHalf.runs;
@@ -377,17 +738,19 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
       break;
     }
 
+    const awayPitcher = maybeChangePitcher(state, awayPitching, pitchingLines, inning, awayScore - homeScore, playByPlay);
     const homeHalf = simulateHalfInning(
       state,
       inning,
       "Bottom",
       homeTeam.activeLineup.battingOrderPlayerIds,
       homeBattingIndex,
-      awayStarter,
+      awayPitcher,
       awayTeam.activeLineup.battingOrderPlayerIds.map((playerId) => state.players[playerId]),
       getHomeDisplayName,
       battingLines,
-      pitchingLines[awayStarterId],
+      awayPitching,
+      pitchingLines,
       playByPlay,
     );
     homeScore += homeHalf.runs;
@@ -396,32 +759,113 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
     totalWalks += homeHalf.walks;
     totalStrikeouts += homeHalf.strikeouts;
     runnerAdvancementEvents += homeHalf.advancementEvents;
-
-    if (inning >= 9 && homeScore !== awayScore) {
-      break;
-    }
   }
 
   const notableEvents: string[] = [];
   if (homeScore === awayScore) {
-    const tiebreakScorer = (teamBattingOrder: string[]) => {
-      const randomIndex = Math.floor(nextRoll(state) * teamBattingOrder.length) % teamBattingOrder.length;
-      const scorerId = teamBattingOrder[randomIndex];
-      const scorerLine = battingLines[scorerId] ?? (battingLines[scorerId] = createBattingLine(scorerId));
-      scorerLine.runs += 1;
-    };
+    inningsPlayed = 10;
+    const averageClutch = (team: Team) => team.activeLineup.battingOrderPlayerIds
+      .map((playerId) => state.players[playerId].ratings.hitting.clutch)
+      .reduce((sum, rating) => sum + rating, 0) / Math.max(1, team.activeLineup.battingOrderPlayerIds.length);
+    const homeClutch = averageClutch(homeTeam) + 2;
+    const awayClutch = averageClutch(awayTeam);
+    const homeWinChance = clamp(0.5 + ((homeClutch - awayClutch) / 120), 0.4, 0.6);
+    const winningSide = nextRoll(state) <= homeWinChance ? "home" : "away";
 
-    if (nextRoll(state) >= 0.5) {
-      homeScore += 1;
-      tiebreakScorer(homeTeam.activeLineup.battingOrderPlayerIds);
-      playByPlay.push("Tiebreak: Home team scratches across the deciding run.");
+    if (nextRoll(state) < 0.78) {
+      if (winningSide === "home") {
+        const homePitcher = maybeChangePitcher(state, homePitching, pitchingLines, 10, homeScore - awayScore, playByPlay);
+        const awayTenth = appendScorelessBonusFrame(10, "Top", getPitchingLine(pitchingLines, homePitching.currentPitcherId), playByPlay);
+        totalPlateAppearances += awayTenth.plateAppearances;
+        const awayPitcher = maybeChangePitcher(state, awayPitching, pitchingLines, 10, awayScore - homeScore, playByPlay);
+        const homeTenth = appendDecisiveBonusFrame(
+          10,
+          "Bottom",
+          "rally",
+          homeTeam.activeLineup.battingOrderPlayerIds,
+          homeBattingIndex,
+          battingLines,
+          getPitchingLine(pitchingLines, awayPitching.currentPitcherId),
+          getHomeDisplayName,
+          playByPlay,
+        );
+        void homePitcher;
+        void awayPitcher;
+        homeScore += homeTenth.runs;
+        totalPlateAppearances += homeTenth.plateAppearances;
+        totalHits += homeTenth.hits;
+        runnerAdvancementEvents += homeTenth.advancementEvents;
+      } else {
+        const homePitcher = maybeChangePitcher(state, homePitching, pitchingLines, 10, homeScore - awayScore, playByPlay);
+        const awayTenth = appendDecisiveBonusFrame(
+          10,
+          "Top",
+          "rally",
+          awayTeam.activeLineup.battingOrderPlayerIds,
+          awayBattingIndex,
+          battingLines,
+          getPitchingLine(pitchingLines, homePitching.currentPitcherId),
+          getAwayDisplayName,
+          playByPlay,
+        );
+        awayScore += awayTenth.runs;
+        totalPlateAppearances += awayTenth.plateAppearances;
+        totalHits += awayTenth.hits;
+        runnerAdvancementEvents += awayTenth.advancementEvents;
+        const awayPitcher = maybeChangePitcher(state, awayPitching, pitchingLines, 10, awayScore - homeScore, playByPlay);
+        const homeTenth = appendScorelessBonusFrame(10, "Bottom", getPitchingLine(pitchingLines, awayPitching.currentPitcherId), playByPlay);
+        totalPlateAppearances += homeTenth.plateAppearances;
+        void homePitcher;
+        void awayPitcher;
+      }
+      notableEvents.push("The clubs needed extra innings to settle it.");
+    } else if (winningSide === "home") {
+      maybeChangePitcher(state, homePitching, pitchingLines, 10, homeScore - awayScore, playByPlay);
+      const awayTenth = appendScorelessBonusFrame(10, "Top", getPitchingLine(pitchingLines, homePitching.currentPitcherId), playByPlay);
+      totalPlateAppearances += awayTenth.plateAppearances;
+      maybeChangePitcher(state, awayPitching, pitchingLines, 10, awayScore - homeScore, playByPlay);
+      const homeTenth = appendDecisiveBonusFrame(
+        10,
+        "Bottom",
+        "tiebreak",
+        homeTeam.activeLineup.battingOrderPlayerIds,
+        homeBattingIndex,
+        battingLines,
+        getPitchingLine(pitchingLines, awayPitching.currentPitcherId),
+        getHomeDisplayName,
+        playByPlay,
+      );
+      homeScore += homeTenth.runs;
+      totalPlateAppearances += homeTenth.plateAppearances;
+      totalHits += homeTenth.hits;
+      runnerAdvancementEvents += homeTenth.advancementEvents;
+      notableEvents.push("The league tiebreak rule decided the game in the 10th.");
     } else {
-      awayScore += 1;
-      tiebreakScorer(awayTeam.activeLineup.battingOrderPlayerIds);
-      playByPlay.push("Tiebreak: Away team scratches across the deciding run.");
+      maybeChangePitcher(state, homePitching, pitchingLines, 10, homeScore - awayScore, playByPlay);
+      const awayTenth = appendDecisiveBonusFrame(
+        10,
+        "Top",
+        "tiebreak",
+        awayTeam.activeLineup.battingOrderPlayerIds,
+        awayBattingIndex,
+        battingLines,
+        getPitchingLine(pitchingLines, homePitching.currentPitcherId),
+        getAwayDisplayName,
+        playByPlay,
+      );
+      awayScore += awayTenth.runs;
+      totalPlateAppearances += awayTenth.plateAppearances;
+      totalHits += awayTenth.hits;
+      runnerAdvancementEvents += awayTenth.advancementEvents;
+      maybeChangePitcher(state, awayPitching, pitchingLines, 10, awayScore - homeScore, playByPlay);
+      const homeTenth = appendScorelessBonusFrame(10, "Bottom", getPitchingLine(pitchingLines, awayPitching.currentPitcherId), playByPlay);
+      totalPlateAppearances += homeTenth.plateAppearances;
+      notableEvents.push("The league tiebreak rule decided the game in the 10th.");
     }
-    notableEvents.push("The game needed an extra-inning tiebreak to produce a winner.");
   }
+
+  totalHits += ensureTeamHasAHit(homeTeam, battingLines, getPitchingLine(pitchingLines, awayPitching.currentPitcherId));
+  totalHits += ensureTeamHasAHit(awayTeam, battingLines, getPitchingLine(pitchingLines, homePitching.currentPitcherId));
 
   const homeFinance = state.finances[game.homeTeamId];
   const homeStandings = state.standings[game.leagueId].rows.find((row) => row.teamId === game.homeTeamId);
@@ -438,6 +882,8 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
 
   const winningTeamId = homeScore > awayScore ? game.homeTeamId : game.awayTeamId;
   const losingTeamId = winningTeamId === game.homeTeamId ? game.awayTeamId : game.homeTeamId;
+  const winningPitcherId = winningTeamId === game.homeTeamId ? homePitching.currentPitcherId : awayPitching.currentPitcherId;
+  const losingPitcherId = losingTeamId === game.homeTeamId ? homePitching.currentPitcherId : awayPitching.currentPitcherId;
   const homeHomeRuns = Object.values(battingLines).filter((line) => line.homeRuns > 0 && homeTeam.rosterPlayerIds.includes(line.playerId));
   const awayHomeRuns = Object.values(battingLines).filter((line) => line.homeRuns > 0 && awayTeam.rosterPlayerIds.includes(line.playerId));
   if (homeHomeRuns.length > 0 || awayHomeRuns.length > 0) {
@@ -455,8 +901,8 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
     inningsPlayed,
     winningTeamId,
     losingTeamId,
-    winningPitcherId: winningTeamId === game.homeTeamId ? homeStarterId : awayStarterId,
-    losingPitcherId: losingTeamId === game.homeTeamId ? homeStarterId : awayStarterId,
+    winningPitcherId,
+    losingPitcherId,
     attendance,
     notableEvents,
     playByPlay,
@@ -464,8 +910,8 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
       battingLines,
       pitchingLines,
       errorsByTeam: {
-        [game.homeTeamId]: nextRoll(state) > 0.88 ? 1 : 0,
-        [game.awayTeamId]: nextRoll(state) > 0.88 ? 1 : 0,
+        [game.homeTeamId]: nextRoll(state) > 0.9 ? 1 : 0,
+        [game.awayTeamId]: nextRoll(state) > 0.9 ? 1 : 0,
       },
     },
     simSummary: {
@@ -479,3 +925,27 @@ export function simulateGame(state: GameState, game: ScheduledGame): GameResult 
     },
   };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
