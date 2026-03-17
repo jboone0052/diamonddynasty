@@ -2,6 +2,7 @@ import { economyConfig, worldConfig } from "@baseball-sim/config";
 import { introStory, startingLeague, startingTeams } from "@baseball-sim/content";
 import { createPlayer } from "./createPlayer";
 import { Contract, GameState, LeagueStandings, PlayerPosition, ScheduledGame, Team } from "../types/gameState";
+import { buildInitialFtueState } from "../ftue";
 
 
 const FIXED_ROSTER_POSITIONS: ("SP" | "RP" | "C" | "1B" | "2B" | "3B" | "SS" | "LF" | "CF" | "RF" | "DH")[] = [
@@ -250,7 +251,9 @@ export function createNewGame(seed = createInitialSeed()): GameState {
       marketingBudgetMonthly: economyConfig.averageMarketingBudgetMonthly,
       ticketPrice: economyConfig.baseTicketPrice,
       merchandiseStrength: economyConfig.baseMerchandiseStrength,
+      sponsorBaseRevenueMonthly: economyConfig.baseSponsorRevenueMonthly,
       sponsorRevenueMonthly: economyConfig.baseSponsorRevenueMonthly,
+      previousSeasonWins: base.id === userTeamId ? 1 : 7,
       lastMonthRevenueBreakdown: makeBreakdown(),
       lastMonthExpenseBreakdown: makeExpenseBreakdown(),
       seasonRevenueBreakdown: makeBreakdown(),
@@ -337,10 +340,13 @@ export function createNewGame(seed = createInitialSeed()): GameState {
   };
 
   const objectiveId = "obj_first_promotion";
+  const highlightedProspectId = Object.values(players)
+    .find((player) => !player.currentTeamId && player.status === "freeAgent" && player.age <= 24 && (player.primaryPosition === "SP" || player.primaryPosition === "RP"))
+    ?.id;
 
   return {
     meta: {
-      schemaVersion: 2,
+      schemaVersion: 5,
       createdAt: now,
       updatedAt: now,
       gameVersion: "0.2.0",
@@ -353,6 +359,7 @@ export function createNewGame(seed = createInitialSeed()): GameState {
       currentWeek: 1,
       currentPhase: "regularSeason",
       userTeamId,
+      ownerName: "",
       difficulty: "normal",
       currency: "USD",
       weeksInSeason: weeks.length,
@@ -376,6 +383,7 @@ export function createNewGame(seed = createInitialSeed()): GameState {
       unlockedCutsceneIds: ["cutscene_inheritance"],
       completedObjectiveIds: [],
       activeObjectiveIds: [objectiveId],
+      ftue: buildInitialFtueState(highlightedProspectId),
       objectives: {
         [objectiveId]: {
           id: objectiveId,

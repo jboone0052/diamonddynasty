@@ -1,6 +1,8 @@
+import { Redirect, useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getPlayerHealthSnapshot, getTeamManagementHealthSnapshot } from "@baseball-sim/game-core";
+import { getFtueSnapshot, getPlayerHealthSnapshot, getTeamManagementHealthSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
+import { getFtueHref, getFtueRedirectScreen } from "../src/ftue";
 
 function formatBattingAverage(hits: number, atBats: number) {
   if (atBats <= 0) return ".000";
@@ -40,14 +42,34 @@ function WarningCard({ title, items }: { title: string; items: Array<{ playerId:
 }
 
 export default function LineupScreen() {
-  const { game, moveLineupPlayer, replaceLineupPlayer, moveRotationPlayer } = useGameSessionStore();
+  const router = useRouter();
+  const { game, loading, acknowledgeFtueStep, moveLineupPlayer, replaceLineupPlayer, moveRotationPlayer } = useGameSessionStore();
   if (!game) return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
+  const redirectScreen = getFtueRedirectScreen(game, "lineup");
+  if (redirectScreen) {
+    return <Redirect href={getFtueHref(redirectScreen)} />;
+  }
 
   const team = game.teams[game.world.userTeamId];
   const healthSnapshot = getTeamManagementHealthSnapshot(game);
+  const ftue = getFtueSnapshot(game);
+
+  const handleContinueFtue = async () => {
+    await acknowledgeFtueStep("reviewLineup");
+    router.replace(getFtueHref("finances"));
+  };
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+      {ftue.isActive && ftue.currentStep === "reviewLineup" ? (
+        <View style={{ borderWidth: 1, borderRadius: 12, padding: 14, borderColor: "#93c5fd", backgroundColor: "#eff6ff", gap: 8 }}>
+          <Text style={{ fontWeight: "700", color: "#1d4ed8" }}>{ftue.title}</Text>
+          <Text style={{ color: "#334155" }}>{ftue.description}</Text>
+          <Pressable onPress={handleContinueFtue} style={{ alignSelf: "flex-start", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#1d4ed8" }}>
+            <Text style={{ color: "white", fontWeight: "700" }}>{loading ? "Updating..." : "Continue to Finances"}</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {healthSnapshot.lineupWarnings.length > 0 ? <WarningCard title="Lineup Warnings" items={healthSnapshot.lineupWarnings} /> : null}
       {healthSnapshot.rotationWarnings.length > 0 ? <WarningCard title="Rotation Warnings" items={healthSnapshot.rotationWarnings} /> : null}
 

@@ -1,6 +1,8 @@
+import { Redirect } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getScoutingSnapshot } from "@baseball-sim/game-core";
+import { getFtueSnapshot, getScoutingSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
+import { getFtueHref, getFtueRedirectScreen } from "../src/ftue";
 
 function formatSalary(amount: number) {
   return `$${Math.round(amount / 1000)}k`;
@@ -54,8 +56,14 @@ function ProspectCard({
 export default function ScoutingScreen() {
   const { game, error, loading, scoutProspect, signFreeAgent } = useGameSessionStore();
   if (!game) return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
+  const redirectScreen = getFtueRedirectScreen(game, "scouting");
+  if (redirectScreen) {
+    return <Redirect href={getFtueHref(redirectScreen)} />;
+  }
 
   const snapshot = getScoutingSnapshot(game);
+  const ftue = getFtueSnapshot(game);
+  const highlightedProspect = ftue.highlightedProspectId ? snapshot.availableProspects.find((item) => item.player.id === ftue.highlightedProspectId) : undefined;
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12, backgroundColor: "#f8fafc" }}>
@@ -67,6 +75,23 @@ export default function ScoutingScreen() {
         <Text style={{ color: "#475569" }}>Scouting accuracy {snapshot.department.scoutingAccuracy} | Prospect reports filed {snapshot.reports.length}</Text>
         {error ? <Text style={{ color: "#b91c1c" }}>{error}</Text> : null}
       </View>
+
+      {ftue.isActive && (ftue.currentStep === "scoutPitcher" || ftue.currentStep === "signPitcher") ? (
+        <View style={{ borderWidth: 1, borderRadius: 12, padding: 12, gap: 6, borderColor: "#93c5fd", backgroundColor: "#eff6ff" }}>
+          <Text style={{ fontWeight: "700", color: "#1d4ed8" }}>{ftue.title}</Text>
+          <Text style={{ color: "#334155" }}>{ftue.description}</Text>
+          {highlightedProspect ? (
+            <Text style={{ color: "#475569" }}>
+              Recommended target: {highlightedProspect.player.fullName} ({highlightedProspect.player.primaryPosition}) for {formatSalary(highlightedProspect.signingSalary)}.
+            </Text>
+          ) : null}
+          {ftue.currentStep === "signPitcher" ? (
+            <Text style={{ color: "#0f172a", fontWeight: "600" }}>
+              Use the `Sign Prospect` button on the scouted pitcher below to continue.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       <Text style={{ fontSize: 20, fontWeight: "700", color: "#0f172a" }}>Recommended Pitchers</Text>
       {snapshot.recommendedPitchers.length === 0 ? <Text>No unsigned pitchers in the scouting market right now.</Text> : null}

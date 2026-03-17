@@ -1,5 +1,6 @@
 import { economyConfig } from "@baseball-sim/config";
 import { GameState, Player, Team } from "../types/gameState";
+import { completeFtueStep } from "../ftue";
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -155,5 +156,9 @@ export function signFreeAgent(state: GameState, teamId: string, playerId: string
 
   applyRosterDepthChart(team, next);
   recalculatePayroll(next, teamId);
+  if (player.primaryPosition === "SP" || player.primaryPosition === "RP") {
+    next.meta.updatedAt = new Date().toISOString();
+    completeFtueStep(next, "signPitcher", `Signed pitcher ${player.fullName} during the tutorial.`);
+  }
   return next;
 }

@@ -1,7 +1,8 @@
 import { Link, Redirect, useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getDashboardSnapshot, getLatestCompletedWeek, getTeamManagementHealthSnapshot } from "@baseball-sim/game-core";
+import { getDashboardSnapshot, getFtueSnapshot, getLatestCompletedWeek, getTeamManagementHealthSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
+import { getFtueHref } from "../src/ftue";
 
 function NavButton({ href, label }: { href: "/results" | "/roster" | "/scouting" | "/lineup" | "/standings" | "/schedule" | "/finances" | "/promotion" | "/promotion-plan" | "/inbox" | "/summary" | "/saves"; label: string }) {
   return (
@@ -95,6 +96,7 @@ export default function HomeScreen() {
   }
 
   const dashboard = getDashboardSnapshot(game);
+  const ftue = getFtueSnapshot(game);
   const latestCompletedWeek = getLatestCompletedWeek(game);
   const health = getTeamManagementHealthSnapshot(game);
   const highRiskLineupCount = health.lineupWarnings.filter((warning) => warning.riskLabel === "High").length;
@@ -104,9 +106,15 @@ export default function HomeScreen() {
   const nextOpponent = dashboard.nextGame
     ? `${game.teams[dashboard.nextGame.awayTeamId].nickname} @ ${game.teams[dashboard.nextGame.homeTeamId].nickname}`
     : "Season complete";
+  const ftuePrimaryHref = getFtueHref(ftue.primaryScreen);
 
   const handleAdvanceWeek = async () => {
     if (loading || (game.world.seasonStatus === "completed" && !canStartNextSeason)) {
+      return;
+    }
+
+    if (ftue.isActive && ftue.currentStep !== "advanceWeek") {
+      router.push(ftuePrimaryHref);
       return;
     }
 
@@ -152,6 +160,25 @@ export default function HomeScreen() {
           onAction={() => router.push("/lineup")}
         />
       ) : null}
+      {ftue.isActive ? (
+        <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, gap: 8, borderColor: "#93c5fd", backgroundColor: "#eff6ff" }}>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: "#1d4ed8" }}>
+            Tutorial {Math.min(ftue.progressIndex + 1, ftue.totalSteps)} / {ftue.totalSteps}
+          </Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#0f172a" }}>{ftue.title}</Text>
+          <Text style={{ color: "#334155" }}>{ftue.description}</Text>
+          {ftue.highlightedProspect ? (
+            <Text style={{ color: "#475569" }}>
+              Suggested target: {ftue.highlightedProspect.fullName} ({ftue.highlightedProspect.primaryPosition})
+            </Text>
+          ) : null}
+          {ftue.currentStep !== "advanceWeek" ? (
+            <Pressable onPress={() => router.push(ftuePrimaryHref)} style={{ alignSelf: "flex-start", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#1d4ed8" }}>
+              <Text style={{ color: "white", fontWeight: "700" }}>{ftue.actionLabel}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
 
       <DashboardCard label="Record" value={`${dashboard.standings.wins}-${dashboard.standings.losses}`} />
       <DashboardCard label="Cash" value={`$${dashboard.finances.currentCash.toLocaleString()}`} />
@@ -161,25 +188,25 @@ export default function HomeScreen() {
 
       <Pressable onPress={handleAdvanceWeek} style={{ padding: 12, backgroundColor: "#1f2937", borderRadius: 8 }}>
         <Text style={{ color: "white", fontWeight: "600" }}>
-          {loading ? "Advancing..." : canStartNextSeason ? "Start Next Season" : game.world.seasonStatus === "completed" ? "Season Complete" : advanceWeekConfirmation ? "Advance Anyway" : "Advance Week"}
+          {loading ? "Advancing..." : canStartNextSeason ? "Start Next Season" : game.world.seasonStatus === "completed" ? "Season Complete" : ftue.isActive && ftue.currentStep !== "advanceWeek" ? "Continue Tutorial" : advanceWeekConfirmation ? "Advance Anyway" : "Advance Week"}
         </Text>
       </Pressable>
       <Pressable onPress={saveGame} style={{ padding: 12, borderWidth: 1, borderRadius: 8, borderColor: "#cbd5e1", backgroundColor: "white" }}>
         <Text style={{ color: "#0f172a" }}>{loading ? "Saving..." : "Save Game"}</Text>
       </Pressable>
 
-      {latestCompletedWeek ? <NavButton href="/results" label="Latest Results" /> : null}
-      <NavButton href="/roster" label="Roster" />
-      <NavButton href="/scouting" label="Scouting" />
-      <NavButton href="/lineup" label="Lineup" />
-      <NavButton href="/standings" label="Standings" />
-      <NavButton href="/schedule" label="Schedule" />
-      <NavButton href="/finances" label="Finances" />
-      <NavButton href="/promotion" label="Promotion Tracker" />
+      {!ftue.isActive && latestCompletedWeek ? <NavButton href="/results" label="Latest Results" /> : null}
+      {!ftue.isActive ? <NavButton href="/roster" label="Roster" /> : null}
+      {(!ftue.isActive || ftue.allowedScreens.includes("scouting")) ? <NavButton href="/scouting" label="Scouting" /> : null}
+      {(!ftue.isActive || ftue.allowedScreens.includes("lineup")) ? <NavButton href="/lineup" label="Lineup" /> : null}
+      {!ftue.isActive ? <NavButton href="/standings" label="Standings" /> : null}
+      {!ftue.isActive ? <NavButton href="/schedule" label="Schedule" /> : null}
+      {(!ftue.isActive || ftue.allowedScreens.includes("finances")) ? <NavButton href="/finances" label="Finances" /> : null}
+      {(!ftue.isActive || ftue.allowedScreens.includes("promotion")) ? <NavButton href="/promotion" label="Promotion Tracker" /> : null}
       <NavButton href="/inbox" label="Inbox" />
       <NavButton href="/saves" label="Save / Load" />
-      {dashboard.seasonSummary ? <NavButton href="/summary" label="Season Summary" /> : null}
-      {dashboard.seasonSummary && !dashboard.seasonSummary.promotion.promoted ? <NavButton href="/promotion-plan" label="Promotion Action Plan" /> : null}
+      {!ftue.isActive && dashboard.seasonSummary ? <NavButton href="/summary" label="Season Summary" /> : null}
+      {!ftue.isActive && dashboard.seasonSummary && !dashboard.seasonSummary.promotion.promoted ? <NavButton href="/promotion-plan" label="Promotion Action Plan" /> : null}
     </ScrollView>
   );
 }

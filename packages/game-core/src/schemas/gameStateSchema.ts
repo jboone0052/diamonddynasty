@@ -23,6 +23,7 @@ export const WorldStateSchema = z.object({
   currentWeek: z.number().int().min(1),
   currentPhase: z.enum(["preseason", "regularSeason", "playoffs", "offseason"]),
   userTeamId: z.string(),
+  ownerName: z.string().max(40),
   difficulty: z.enum(["easy", "normal", "hard", "sim"]),
   currency: z.string(),
   weeksInSeason: z.number().int().min(1),
@@ -324,7 +325,9 @@ export const TeamFinanceStateSchema = z.object({
   marketingBudgetMonthly: z.number().int(),
   ticketPrice: z.number().int().min(1),
   merchandiseStrength: ratingSchema,
+  sponsorBaseRevenueMonthly: z.number().int().min(0),
   sponsorRevenueMonthly: z.number().int().min(0),
+  previousSeasonWins: z.number().int().min(0),
   lastMonthRevenueBreakdown: RevenueBreakdownSchema,
   lastMonthExpenseBreakdown: ExpenseBreakdownSchema,
   seasonRevenueBreakdown: RevenueBreakdownSchema,
@@ -416,6 +419,12 @@ export const StoryStateSchema = z.object({
   completedObjectiveIds: z.array(z.string()),
   activeObjectiveIds: z.array(z.string()),
   objectives: z.record(ObjectiveSchema),
+  ftue: z.object({
+    isActive: z.boolean(),
+    currentStep: z.enum(["inheritanceBriefing", "scoutPitcher", "signPitcher", "reviewPromotion", "reviewLineup", "reviewFinances", "advanceWeek", "reviewResults", "completed"]),
+    completedSteps: z.array(z.enum(["inheritanceBriefing", "scoutPitcher", "signPitcher", "reviewPromotion", "reviewLineup", "reviewFinances", "advanceWeek", "reviewResults", "completed"])),
+    highlightedProspectId: z.string().optional(),
+  }),
   seasonResultMessage: z.string().optional(),
 });
 

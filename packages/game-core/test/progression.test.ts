@@ -19,6 +19,16 @@ describe("season progression", () => {
     expect(next.world.currentWeek).toBe(2);
   });
 
+  it("treats promotion rank as not started before any games are played", () => {
+    const game = createNewGame();
+    const status = getPromotionStatus(game);
+
+    expect(status.seasonStarted).toBe(false);
+    expect(status.gamesPlayed).toBe(0);
+    expect(status.currentRank).toBeNull();
+    expect(status.rankRequirementMet).toBe(false);
+  });
+
 
   it("records ticket income for each completed home game", () => {
     const game = createNewGame();
@@ -266,6 +276,78 @@ describe("season progression", () => {
     expect(seasonExpenses).toBe(0);
   });
 
+  it("raises next-season sponsorship when the club improves on the previous year", () => {
+    const game = createNewGame("sponsor-growth-seed");
+    const userTeamId = game.world.userTeamId;
+    const initialBase = game.finances[userTeamId].sponsorBaseRevenueMonthly;
+    const standings = game.standings[game.teams[userTeamId].leagueId].rows;
+    const userRow = standings.find((row) => row.teamId === userTeamId)!;
+
+    userRow.wins = 4;
+    userRow.losses = 10;
+    userRow.winPct = 0.286;
+    game.world.seasonStatus = "completed";
+    game.seasonSummary = {
+      championTeamId: standings[0].teamId,
+      finalStandings: standings.map((row) => row.teamId),
+      promotion: {
+        finalRank: 5,
+        qualifiedByRank: false,
+        stadiumRequirementMet: false,
+        attendanceRequirementMet: false,
+        cashRequirementMet: false,
+        promoted: false,
+        summary: "Promotion missed.",
+      },
+      message: "Season complete.",
+    };
+
+    const nextSeason = advanceWeek(game);
+    const finance = nextSeason.finances[userTeamId];
+
+    expect(finance.previousSeasonWins).toBe(4);
+    expect(finance.sponsorBaseRevenueMonthly).toBeGreaterThan(initialBase);
+    expect(finance.sponsorRevenueMonthly).toBe(finance.sponsorBaseRevenueMonthly);
+  });
+
+  it("cuts next-season sponsorship when the club regresses", () => {
+    const game = createNewGame("sponsor-drop-seed");
+    const userTeamId = game.world.userTeamId;
+    const finance = game.finances[userTeamId];
+    finance.previousSeasonWins = 7;
+    finance.sponsorBaseRevenueMonthly = 18000;
+    finance.sponsorRevenueMonthly = 18000;
+
+    const standings = game.standings[game.teams[userTeamId].leagueId].rows;
+    const userRow = standings.find((row) => row.teamId === userTeamId)!;
+    userRow.wins = 3;
+    userRow.losses = 11;
+    userRow.winPct = 0.214;
+
+    game.world.seasonStatus = "completed";
+    game.seasonSummary = {
+      championTeamId: standings[0].teamId,
+      finalStandings: standings.map((row) => row.teamId),
+      promotion: {
+        finalRank: 7,
+        qualifiedByRank: false,
+        stadiumRequirementMet: false,
+        attendanceRequirementMet: false,
+        cashRequirementMet: false,
+        promoted: false,
+        summary: "Promotion missed.",
+      },
+      message: "Season complete.",
+    };
+
+    const nextSeason = advanceWeek(game);
+    const nextFinance = nextSeason.finances[userTeamId];
+
+    expect(nextFinance.previousSeasonWins).toBe(3);
+    expect(nextFinance.sponsorBaseRevenueMonthly).toBeLessThan(18000);
+    expect(nextFinance.sponsorRevenueMonthly).toBe(nextFinance.sponsorBaseRevenueMonthly);
+  });
+
   it("does not start a new season when advancing after completion with promotion", () => {
     let game = createNewGame();
     for (let index = 0; index < game.world.weeksInSeason; index += 1) {
@@ -286,6 +368,32 @@ describe("season progression", () => {
     expect(afterAdvance.world.currentWeek).toBe(completedWeek);
     expect(afterAdvance.world.currentDate).toBe(completedDate);
     expect(afterAdvance.world.seasonStatus).toBe("completed");
+  });
+
+  it("gives hotter clubs a better midseason sponsor line than cold clubs", () => {
+    const hot = createNewGame("sponsor-streak-seed");
+    const cold = createNewGame("sponsor-streak-seed");
+    const trackedGame = Object.values(hot.schedule).find((scheduledGame) => scheduledGame.week === 1)!;
+    const trackedTeamId = trackedGame.homeTeamId;
+    const hotRow = hot.standings[hot.teams[trackedTeamId].leagueId].rows.find((row) => row.teamId === trackedTeamId)!;
+    const coldRow = cold.standings[cold.teams[trackedTeamId].leagueId].rows.find((row) => row.teamId === trackedTeamId)!;
+
+    hotRow.wins = 5;
+    hotRow.losses = 4;
+    hotRow.winPct = 0.556;
+    hotRow.streak = 3;
+    hotRow.averageAttendance = 950;
+
+    coldRow.wins = 5;
+    coldRow.losses = 4;
+    coldRow.winPct = 0.556;
+    coldRow.streak = -3;
+    coldRow.averageAttendance = 950;
+
+    const hotNext = advanceWeek(hot);
+    const coldNext = advanceWeek(cold);
+
+    expect(hotNext.finances[trackedTeamId].sponsorRevenueMonthly).toBeGreaterThan(coldNext.finances[trackedTeamId].sponsorRevenueMonthly);
   });
 
   it("round-trips through serialization and local save repository", async () => {

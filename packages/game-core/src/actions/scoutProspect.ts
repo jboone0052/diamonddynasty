@@ -1,5 +1,6 @@
 import { GameState, Player, ProspectReport } from "../types/gameState";
 import { nextSeededValue } from "../utils/rng";
+import { completeFtueStep } from "../ftue";
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -99,6 +100,9 @@ export function scoutProspect(input: GameState, teamId: string, playerId: string
     payload: { playerId, scoutedOverallEstimate, scoutedPotentialEstimate, confidence },
     summary: `${team.nickname} scouted ${player.fullName}.`,
   });
+  if (player.primaryPosition === "SP" || player.primaryPosition === "RP") {
+    completeFtueStep(state, "scoutPitcher", `Scouted pitcher ${player.fullName} during the tutorial.`);
+  }
   state.meta.updatedAt = new Date().toISOString();
   return state;
 }

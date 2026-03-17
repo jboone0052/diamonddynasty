@@ -1,4 +1,5 @@
 import { GameState } from "../types/gameState";
+import { completeFtueStep } from "../ftue";
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -26,5 +27,8 @@ export function setTicketPrice(input: GameState, teamId: string, ticketPrice: nu
     payload: { ticketPrice: normalizedPrice },
     summary: `${state.teams[teamId].nickname} set ticket price to $${normalizedPrice}.`,
   });
+  if (teamId === state.world.userTeamId) {
+    completeFtueStep(state, "reviewFinances", "Reviewed ticket pricing during the tutorial.");
+  }
   return state;
 }

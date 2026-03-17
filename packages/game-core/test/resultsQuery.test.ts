@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { advanceWeek } from "../src/actions/advanceWeek";
 import { createNewGame } from "../src/factories/createNewGame";
-import { getLatestCompletedWeek, getPlayerHealthSnapshot, getTeamManagementHealthSnapshot, getWeeklyResultsSnapshot } from "../src/queries";
+import { getLatestCompletedWeek, getPlayerHealthSnapshot, getSeasonSponsorshipSnapshot, getTeamManagementHealthSnapshot, getWeeklyResultsSnapshot } from "../src/queries";
 
 describe("weekly results queries", () => {
   it("returns the latest completed week recap after advancing", () => {
@@ -54,5 +54,22 @@ describe("weekly results queries", () => {
     const snapshot = getWeeklyResultsSnapshot(updated, 1);
 
     expect(snapshot?.injuryReport.userTeam.some((item) => item.player.id === starterId)).toBe(true);
+  });
+
+  it("projects the next-season sponsor deal from the finished record", () => {
+    const game = createNewGame("sponsorship-summary-seed");
+    const teamId = game.world.userTeamId;
+    const row = game.standings[game.teams[teamId].leagueId].rows.find((item) => item.teamId === teamId)!;
+
+    row.wins = 4;
+    row.losses = 10;
+    row.winPct = 0.286;
+
+    const sponsorship = getSeasonSponsorshipSnapshot(game, teamId);
+
+    expect(sponsorship.previousSeasonWins).toBe(1);
+    expect(sponsorship.completedSeasonWins).toBe(4);
+    expect(sponsorship.projectedNextSeasonBase).toBeGreaterThan(sponsorship.currentBaseRevenueMonthly);
+    expect(sponsorship.projectedChange).toBeGreaterThan(0);
   });
 });

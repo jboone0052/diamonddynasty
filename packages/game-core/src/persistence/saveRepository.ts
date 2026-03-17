@@ -1,7 +1,8 @@
 import { GameState } from "../types/gameState";
 import { GameStateSchema } from "../schemas/gameStateSchema";
+import { buildMigratedFtueState } from "../ftue";
 
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 5;
 const SAVE_INDEX_KEY = "baseball-sim:save-index";
 const SAVE_PREFIX = "baseball-sim:save:";
 
@@ -83,11 +84,14 @@ function createDefaultStorage(): SaveStorageAdapter {
 
 function normalizeFinanceState(save: Record<string, unknown>) {
   const rawFinances = save.finances;
+  const rawTeams = save.teams && typeof save.teams === "object"
+    ? save.teams as Record<string, Record<string, unknown>>
+    : {};
   if (!rawFinances || typeof rawFinances !== "object") {
     return;
   }
 
-  Object.values(rawFinances as Record<string, Record<string, unknown>>).forEach((finance) => {
+  Object.entries(rawFinances as Record<string, Record<string, unknown>>).forEach(([teamId, finance]) => {
     if (!finance || typeof finance !== "object") {
       return;
     }
@@ -98,7 +102,51 @@ function normalizeFinanceState(save: Record<string, unknown>) {
     if (!finance.seasonExpenseBreakdown) {
       finance.seasonExpenseBreakdown = createEmptyExpenseBreakdown();
     }
+    if (typeof finance.sponsorBaseRevenueMonthly !== "number") {
+      const sponsorRevenueMonthly = typeof finance.sponsorRevenueMonthly === "number"
+        ? finance.sponsorRevenueMonthly
+        : 0;
+      finance.sponsorBaseRevenueMonthly = sponsorRevenueMonthly;
+    }
+    if (typeof finance.previousSeasonWins !== "number") {
+      const team = rawTeams[teamId];
+      finance.previousSeasonWins = team?.isHumanControlled === true ? 1 : 7;
+    }
   });
+}
+
+function normalizeStoryState(save: Record<string, unknown>) {
+  const rawStory = save.story;
+  const rawPlayers = save.players;
+  if (!rawStory || typeof rawStory !== "object") {
+    return;
+  }
+
+  if (!("ftue" in rawStory)) {
+    const highlightedProspectId = rawPlayers && typeof rawPlayers === "object"
+      ? Object.values(rawPlayers as Record<string, Record<string, unknown>>).find((player) => {
+        return !player.currentTeamId
+          && player.status === "freeAgent"
+          && typeof player.age === "number"
+          && player.age <= 24
+          && (player.primaryPosition === "SP" || player.primaryPosition === "RP");
+      })?.id as string | undefined
+      : undefined;
+
+    (rawStory as Record<string, unknown>).ftue = buildMigratedFtueState({ story: rawStory as GameState["story"] }, highlightedProspectId);
+  }
+}
+
+function normalizeWorldState(save: Record<string, unknown>) {
+  const rawWorld = save.world;
+  if (!rawWorld || typeof rawWorld !== "object") {
+    return;
+  }
+
+  const world = rawWorld as Record<string, unknown>;
+  if (typeof world.ownerName !== "string") {
+    world.ownerName = "";
+  }
 }
 
 export function serializeGameState(state: GameState): string {
@@ -109,6 +157,8 @@ export function migrateGameState(save: unknown): GameState {
   const normalized = save as Record<string, unknown>;
   if (normalized && typeof normalized === "object") {
     normalizeFinanceState(normalized);
+    normalizeStoryState(normalized);
+    normalizeWorldState(normalized);
   }
 
   const parsed = GameStateSchema.parse(normalized) as GameState;

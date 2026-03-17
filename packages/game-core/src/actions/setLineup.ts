@@ -1,4 +1,5 @@
 import { GameState, TeamLineup } from "../types/gameState";
+import { completeFtueStep } from "../ftue";
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -32,5 +33,8 @@ export function setLineup(input: GameState, teamId: string, lineup: TeamLineup):
     payload: { battingOrderPlayerIds: lineup.battingOrderPlayerIds },
     summary: `${state.teams[teamId].nickname} updated the batting order.`,
   });
+  if (teamId === state.world.userTeamId) {
+    completeFtueStep(state, "reviewLineup", "Reviewed the lineup during the tutorial.");
+  }
   return state;
 }

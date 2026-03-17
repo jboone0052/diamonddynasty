@@ -1,6 +1,8 @@
+import { Redirect } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { getPlayerHealthSnapshot, getRosterSnapshot, getVisibleFreeAgentMarket } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
+import { getFtueHref, getFtueRedirectScreen } from "../src/ftue";
 
 function formatPayrollImpact(monthlyDelta: number) {
   const sign = monthlyDelta >= 0 ? "+" : "-";
@@ -33,6 +35,10 @@ function renderSeasonLine(player: ReturnType<typeof getRosterSnapshot>["roster"]
 export default function RosterScreen() {
   const { game, error, releasePlayer, signFreeAgent } = useGameSessionStore();
   if (!game) return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
+  const redirectScreen = getFtueRedirectScreen(game, "lineup");
+  if (redirectScreen && redirectScreen !== "lineup") {
+    return <Redirect href={getFtueHref(redirectScreen)} />;
+  }
 
   const snapshot = getRosterSnapshot(game);
   const freeAgents = getVisibleFreeAgentMarket(game);

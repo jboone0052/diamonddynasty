@@ -22,6 +22,14 @@ describe("createNewGame", () => {
     expect(game.mailbox.messages.length).toBeGreaterThanOrEqual(3);
   });
 
+  it("starts the user club from a one-win sponsorship baseline", () => {
+    const game = createNewGame();
+    const finance = game.finances[game.world.userTeamId];
+
+    expect(finance.previousSeasonWins).toBe(1);
+    expect(finance.sponsorBaseRevenueMonthly).toBe(finance.sponsorRevenueMonthly);
+  });
+
   it("generates unique full names within each team roster", () => {
     const game = createNewGame();
 

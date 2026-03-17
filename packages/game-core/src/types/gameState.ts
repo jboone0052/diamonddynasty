@@ -24,6 +24,8 @@ export type StoryChapter = "inheritance" | "rebuild" | "firstPromotionPush" | "n
 export type MailCategory = "news" | "injury" | "sponsorship" | "story" | "league" | "staff";
 export type PendingActionType = "SET_LINEUP" | "SET_ROTATION" | "SET_TICKET_PRICE" | "MARK_MESSAGE_READ" | "ADVANCE_WEEK";
 export type PendingActionStatus = "queued" | "processed" | "failed";
+export type FtueStep = "inheritanceBriefing" | "scoutPitcher" | "signPitcher" | "reviewPromotion" | "reviewLineup" | "reviewFinances" | "advanceWeek" | "reviewResults" | "completed";
+export type FtueScreen = "dashboard" | "intro" | "scouting" | "promotion" | "lineup" | "roster" | "finances" | "inbox" | "saves" | "results";
 
 export type WorldState = {
   currentDate: string;
@@ -31,6 +33,7 @@ export type WorldState = {
   currentWeek: number;
   currentPhase: WorldPhase;
   userTeamId: string;
+  ownerName: string;
   difficulty: DifficultyLevel;
   currency: string;
   weeksInSeason: number;
@@ -345,7 +348,9 @@ export type TeamFinanceState = {
   marketingBudgetMonthly: number;
   ticketPrice: number;
   merchandiseStrength: number;
+  sponsorBaseRevenueMonthly: number;
   sponsorRevenueMonthly: number;
+  previousSeasonWins: number;
   lastMonthRevenueBreakdown: RevenueBreakdown;
   lastMonthExpenseBreakdown: ExpenseBreakdown;
   seasonRevenueBreakdown: RevenueBreakdown;
@@ -439,6 +444,12 @@ export type StoryState = {
   completedObjectiveIds: string[];
   activeObjectiveIds: string[];
   objectives: Record<string, Objective>;
+  ftue: {
+    isActive: boolean;
+    currentStep: FtueStep;
+    completedSteps: FtueStep[];
+    highlightedProspectId?: string;
+  };
   seasonResultMessage?: string;
 };
 

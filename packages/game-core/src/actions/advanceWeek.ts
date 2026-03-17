@@ -2,6 +2,8 @@ import { economyConfig, simConfig } from "@baseball-sim/config";
 import { simulateGame } from "../sim/simulateGame";
 import { GameState, Player, PromotionStatus, ScheduledGame, Team } from "../types/gameState";
 import { nextSeededValue } from "../utils/rng";
+import { getNextSeasonSponsorBase, getStreakSponsorAdjustment } from "../finance/sponsorship";
+import { completeFtueStep } from "../ftue";
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -283,6 +285,7 @@ function refreshCommercialState(state: GameState, teamId: string) {
   const stadium = state.stadiums[team.stadiumId];
   const attendanceShare = row ? row.averageAttendance / Math.max(1, stadium.capacity) : 0.4;
   const winPct = row?.winPct ?? 0.5;
+  const streakMomentum = getStreakSponsorAdjustment(row?.streak ?? 0);
   const marketingRatio = finance.marketingBudgetMonthly / Math.max(1, economyConfig.averageMarketingBudgetMonthly);
   const sponsorMultiplier = 0.55
     + ((team.marketSize / 100) * 0.45)
@@ -290,10 +293,11 @@ function refreshCommercialState(state: GameState, teamId: string) {
     + ((team.fanInterest / 100) * 0.25)
     + (attendanceShare * 0.25)
     + (winPct * 0.18)
+    + streakMomentum
     + (Math.min(1.4, marketingRatio) * 0.06);
   finance.sponsorRevenueMonthly = Math.round(Math.max(
-    economyConfig.baseSponsorRevenueMonthly * 0.7,
-    Math.min(economyConfig.baseSponsorRevenueMonthly * 1.85, economyConfig.baseSponsorRevenueMonthly * sponsorMultiplier),
+    finance.sponsorBaseRevenueMonthly * 0.72,
+    Math.min(finance.sponsorBaseRevenueMonthly * 1.45, finance.sponsorBaseRevenueMonthly * sponsorMultiplier),
   ));
 
   const merchandiseTarget = 10
@@ -691,6 +695,19 @@ function startNextSeason(state: GameState) {
   let maxWeeks = 0;
 
   Object.values(state.leagues).forEach((league) => {
+    const previousRows = sortStandings(state.standings[league.id].rows);
+    previousRows.forEach((row) => {
+      const finance = state.finances[row.teamId];
+      const completedSeasonWins = row.wins;
+      finance.sponsorBaseRevenueMonthly = getNextSeasonSponsorBase(
+        finance.sponsorBaseRevenueMonthly,
+        finance.previousSeasonWins,
+        completedSeasonWins,
+      );
+      finance.sponsorRevenueMonthly = finance.sponsorBaseRevenueMonthly;
+      finance.previousSeasonWins = completedSeasonWins;
+    });
+
     const weeks = generateRoundRobinWeeks(league.teamIds);
     maxWeeks = Math.max(maxWeeks, weeks.length);
     weeks.forEach((pairings, index) => {
@@ -762,7 +779,7 @@ function startNextSeason(state: GameState) {
     date: seasonStartDate,
     sender: "League Commissioner",
     subject: `Season ${nextSeason} kickoff`,
-    body: "A new season is underway. Promotion status from last year will not block your next campaign.",
+    body: "A new season is underway. Sponsorship terms have been reset based on last year's performance, and another promotion push begins now.",
     category: "league",
     isRead: false,
   });
@@ -817,6 +834,28 @@ function settleWeeklyLedger(state: GameState) {
   syncTeamFinances(state);
 }
 
+function isFtueOpeningGame(state: GameState, game: ScheduledGame) {
+  return state.story.ftue.isActive
+    && state.story.ftue.currentStep === "advanceWeek"
+    && state.world.currentWeek === 1
+    && (game.homeTeamId === state.world.userTeamId || game.awayTeamId === state.world.userTeamId);
+}
+
+function simulateFtueOpeningGame(state: GameState, game: ScheduledGame) {
+  let result = simulateGame(state, game);
+  const userTeamId = state.world.userTeamId;
+
+  for (let attempt = 0; attempt < 24 && result.winningTeamId !== userTeamId; attempt += 1) {
+    result = simulateGame(state, game);
+  }
+
+  if (!result.notableEvents.includes("The club opened the season with a statement win.")) {
+    result.notableEvents.unshift("The club opened the season with a statement win.");
+  }
+
+  return result;
+}
+
 export function advanceWeek(input: GameState): GameState {
   const state = clone(input);
   if (state.world.seasonStatus === "completed") {
@@ -862,7 +901,9 @@ export function advanceWeek(input: GameState): GameState {
   const games = Object.values(state.schedule).filter((game) => game.week === state.world.currentWeek && game.status === "scheduled");
 
   for (const game of games) {
-    const result = simulateGame(state, game);
+    const result = isFtueOpeningGame(state, game)
+      ? simulateFtueOpeningGame(state, game)
+      : simulateGame(state, game);
     state.schedule[game.id].status = "completed";
     state.schedule[game.id].result = result;
     processFinances(state, game);
@@ -886,6 +927,7 @@ export function advanceWeek(input: GameState): GameState {
   settleWeeklyLedger(state);
 
   state.meta.updatedAt = new Date().toISOString();
+  completeFtueStep(state, "advanceWeek", "Completed the first tutorial week.");
 
   if (state.world.currentWeek >= state.world.weeksInSeason) {
     finalizeSeason(state);

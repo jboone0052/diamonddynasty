@@ -1,13 +1,19 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useState } from "react";
-import { getScheduleSnapshot } from "@baseball-sim/game-core";
+import { Redirect } from "expo-router";
+import { getFtueSnapshot, getScheduleSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
+import { getFtueHref } from "../src/ftue";
 
 export default function ScheduleScreen() {
   const { game } = useGameSessionStore();
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
 
   if (!game) return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
+  const ftue = getFtueSnapshot(game);
+  if (ftue.isActive) {
+    return <Redirect href={getFtueHref(ftue.primaryScreen)} />;
+  }
 
   const games = getScheduleSnapshot(game);
 

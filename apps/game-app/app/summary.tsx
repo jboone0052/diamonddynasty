@@ -1,6 +1,6 @@
 import { Link, useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getStandingsSnapshot } from "@baseball-sim/game-core";
+import { getSeasonSponsorshipSnapshot, getStandingsSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
 
 function formatCurrency(value: number) {
@@ -43,6 +43,7 @@ export default function SummaryScreen() {
   const finances = game.finances[team.id];
   const stadium = game.stadiums[team.stadiumId];
   const standings = getStandingsSnapshot(game, league.id);
+  const sponsorship = getSeasonSponsorshipSnapshot(game, team.id);
   const userRow = standings.find((row) => row.teamId === team.id)!;
   const summary = game.seasonSummary;
   const totalRevenue = Object.values(finances.seasonRevenueBreakdown).reduce((sum, value) => sum + value, 0);
@@ -156,7 +157,14 @@ export default function SummaryScreen() {
         <StatRow label="Closing cash" value={formatCurrency(finances.currentCash)} valueTone={finances.currentCash > 0 ? "#166534" : "#0f172a"} />
         <StatRow label="Outstanding debt" value={formatCurrency(finances.currentDebt)} valueTone={finances.currentDebt > 0 ? "#991b1b" : "#166534"} />
         <StatRow label="Ticket price" value={formatCurrency(finances.ticketPrice)} />
-        <StatRow label="Sponsor revenue (monthly)" value={formatCurrency(finances.sponsorRevenueMonthly)} />
+        <StatRow label="Sponsor revenue (current monthly)" value={formatCurrency(sponsorship.currentRevenueMonthly)} />
+        <StatRow label="Sponsor deal entering season" value={formatCurrency(sponsorship.currentBaseRevenueMonthly)} />
+        <StatRow label="Season sponsorship revenue" value={formatCurrency(sponsorship.seasonSponsorshipRevenue)} valueTone="#166534" />
+        <StatRow
+          label={`Projected next-season sponsor deal (${sponsorship.previousSeasonWins}-${league.seasonLength - sponsorship.previousSeasonWins} to ${sponsorship.completedSeasonWins}-${league.seasonLength - sponsorship.completedSeasonWins})`}
+          value={`${formatCurrency(sponsorship.projectedNextSeasonBase)} (${sponsorship.projectedChange >= 0 ? "+" : ""}${formatCurrency(sponsorship.projectedChange)} / ${sponsorship.projectedChangePct >= 0 ? "+" : ""}${sponsorship.projectedChangePct}%)`}
+          valueTone={sponsorship.projectedChange >= 0 ? "#166534" : "#991b1b"}
+        />
         <StatRow label="Merchandise strength" value={String(finances.merchandiseStrength)} />
         <StatRow label="Season revenue" value={formatCurrency(totalRevenue)} valueTone="#166534" />
         <StatRow label="Season expenses" value={formatCurrency(totalExpenses)} valueTone="#991b1b" />

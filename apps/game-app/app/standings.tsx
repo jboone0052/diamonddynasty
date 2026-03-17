@@ -1,10 +1,16 @@
+import { Redirect } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
-import { getStandingsSnapshot } from "@baseball-sim/game-core";
+import { getFtueSnapshot, getStandingsSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
+import { getFtueHref } from "../src/ftue";
 
 export default function StandingsScreen() {
   const { game } = useGameSessionStore();
   if (!game) return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
+  const ftue = getFtueSnapshot(game);
+  if (ftue.isActive) {
+    return <Redirect href={getFtueHref(ftue.primaryScreen)} />;
+  }
 
   const standings = getStandingsSnapshot(game);
 

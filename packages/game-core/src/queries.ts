@@ -1,5 +1,7 @@
 import { GameState, Player, ProspectReport, ScheduledGame, StandingsRow } from "./types/gameState";
 import { getStartingAnnualSalary } from "./actions/manageRoster";
+import { getFtueConfig } from "./ftue";
+import { getNextSeasonSponsorBase } from "./finance/sponsorship";
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -135,19 +137,72 @@ export function getStandingsSnapshot(state: GameState, leagueId = state.teams[st
 
 export function getPromotionStatus(state: GameState) {
   const league = state.leagues[state.teams[state.world.userTeamId].leagueId];
-  const standing = getStandingsSnapshot(state).findIndex((row: StandingsRow) => row.teamId === state.world.userTeamId) + 1;
   const team = getUserTeam(state);
   const row = state.standings[league.id].rows.find((item: StandingsRow) => item.teamId === team.id)!;
   const finance = state.finances[team.id];
   const stadium = state.stadiums[team.stadiumId];
+  const gamesPlayed = row.wins + row.losses;
+  const seasonStarted = gamesPlayed > 0 || Boolean(state.seasonSummary);
+  const standing = seasonStarted
+    ? getStandingsSnapshot(state).findIndex((standingRow: StandingsRow) => standingRow.teamId === state.world.userTeamId) + 1
+    : null;
 
   return {
+    seasonStarted,
+    gamesPlayed,
     currentRank: standing,
-    rankRequirementMet: standing > 0 && standing <= league.promotionSpots,
+    rankRequirementMet: standing !== null && standing > 0 && standing <= league.promotionSpots,
     stadiumRequirementMet: stadium.capacity >= league.minStadiumCapacityForPromotion,
     attendanceRequirementMet: row.averageAttendance >= league.minAverageAttendanceForPromotion,
     cashRequirementMet: finance.currentCash >= league.minCashReserveForPromotion,
     seasonSummary: state.seasonSummary,
+  };
+}
+
+export function getSeasonSponsorshipSnapshot(state: GameState, teamId = state.world.userTeamId) {
+  const team = state.teams[teamId];
+  const row = state.standings[team.leagueId].rows.find((item: StandingsRow) => item.teamId === team.id)!;
+  const finance = state.finances[team.id];
+  const seasonSponsorshipRevenue = finance.seasonRevenueBreakdown.sponsorships;
+  const projectedNextSeasonBase = getNextSeasonSponsorBase(
+    finance.sponsorBaseRevenueMonthly,
+    finance.previousSeasonWins,
+    row.wins,
+  );
+  const projectedChange = projectedNextSeasonBase - finance.sponsorBaseRevenueMonthly;
+  const projectedChangePct = finance.sponsorBaseRevenueMonthly === 0
+    ? 0
+    : Number((((projectedNextSeasonBase / finance.sponsorBaseRevenueMonthly) - 1) * 100).toFixed(1));
+
+  return {
+    currentBaseRevenueMonthly: finance.sponsorBaseRevenueMonthly,
+    currentRevenueMonthly: finance.sponsorRevenueMonthly,
+    previousSeasonWins: finance.previousSeasonWins,
+    completedSeasonWins: row.wins,
+    seasonSponsorshipRevenue,
+    projectedNextSeasonBase,
+    projectedChange,
+    projectedChangePct,
+  };
+}
+
+export function getFtueSnapshot(state: GameState) {
+  const ftue = state.story.ftue;
+  const stepConfig = getFtueConfig(ftue.currentStep);
+  const highlightedProspect = (ftue.currentStep === "scoutPitcher" || ftue.currentStep === "signPitcher") && ftue.highlightedProspectId
+    ? state.players[ftue.highlightedProspectId]
+    : undefined;
+
+  return {
+    ...ftue,
+    title: stepConfig.title,
+    description: stepConfig.description,
+    primaryScreen: stepConfig.primaryScreen,
+    actionLabel: stepConfig.actionLabel,
+    allowedScreens: stepConfig.allowedScreens,
+    highlightedProspect,
+    progressIndex: Math.max(0, ftue.completedSteps.filter((step) => step !== "completed").length),
+    totalSteps: 8,
   };
 }
 

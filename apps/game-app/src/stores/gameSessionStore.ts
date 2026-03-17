@@ -1,11 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import {
+  acknowledgeFtueStep as acknowledgeFtueStepAction,
   advanceWeek as advanceWeekAction,
   completeIntro as completeIntroAction,
   createLocalSaveRepository,
   createNewGame as createNewGameAction,
   expandStadiumCapacity as expandStadiumCapacityAction,
+  FtueStep,
   GameState,
   getTeamManagementHealthSnapshot,
   markMailRead as markMailReadAction,
@@ -59,7 +61,8 @@ type GameSessionState = {
   advanceWeekConfirmation: AdvanceWeekConfirmation | null;
   refreshSaves: () => Promise<void>;
   createNewGame: () => Promise<void>;
-  completeIntro: () => Promise<void>;
+  completeIntro: (ownerName: string, teamNickname?: string) => Promise<void>;
+  acknowledgeFtueStep: (step: FtueStep) => Promise<void>;
   loadSave: (saveId: string) => Promise<void>;
   deleteSave: (saveId: string) => Promise<void>;
   saveGame: () => Promise<void>;
@@ -128,17 +131,30 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to create game." });
     }
   },
-  completeIntro: async () => {
+  completeIntro: async (ownerName, teamNickname) => {
     const current = get().game;
     if (!current || current.story.introCompleted) return;
     set({ loading: true, error: null });
     try {
-      const game = completeIntroAction(current);
+      const game = completeIntroAction(current, { ownerName, teamNickname });
       const saveId = await persistCurrentGame(game, get().selectedSaveId);
       const saves = await repository.list();
       set({ game, selectedSaveId: saveId, saves, loading: false, advanceWeekConfirmation: null });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "Failed to complete intro." });
+    }
+  },
+  acknowledgeFtueStep: async (step) => {
+    const current = get().game;
+    if (!current) return;
+    set({ loading: true, error: null });
+    try {
+      const game = acknowledgeFtueStepAction(current, step);
+      const saveId = await persistCurrentGame(game, get().selectedSaveId);
+      const saves = await repository.list();
+      set({ game, selectedSaveId: saveId, saves, loading: false, advanceWeekConfirmation: null });
+    } catch (error) {
+      set({ loading: false, error: error instanceof Error ? error.message : "Failed to advance tutorial." });
     }
   },
   loadSave: async (saveId: string) => {

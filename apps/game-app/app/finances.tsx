@@ -1,10 +1,18 @@
 import { economyConfig } from "@baseball-sim/config";
+import { Redirect, useRouter } from "expo-router";
 import { Pressable, Text, View } from "react-native";
+import { getFtueSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
+import { getFtueHref, getFtueRedirectScreen } from "../src/ftue";
 
 export default function FinancesScreen() {
-  const { game, error, adjustTicketPrice, expandStadiumCapacity } = useGameSessionStore();
+  const router = useRouter();
+  const { game, error, loading, acknowledgeFtueStep, adjustTicketPrice, expandStadiumCapacity } = useGameSessionStore();
   if (!game) return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
+  const redirectScreen = getFtueRedirectScreen(game, "finances");
+  if (redirectScreen) {
+    return <Redirect href={getFtueHref(redirectScreen)} />;
+  }
 
   const teamId = game.world.userTeamId;
   const team = game.teams[teamId];
@@ -16,10 +24,25 @@ export default function FinancesScreen() {
   const costGrowth = 1 + (facility.stadiumUpgradeLevel - 1) * economyConfig.stadiumExpansionCostGrowthPerLevel;
   const nextUpgradeCost = Math.round(seatsAdded * economyConfig.stadiumExpansionCostPerSeat * costGrowth);
   const canAffordUpgrade = finances.currentCash >= nextUpgradeCost;
+  const ftue = getFtueSnapshot(game);
+
+  const handleContinueFtue = async () => {
+    await acknowledgeFtueStep("reviewFinances");
+    router.replace(getFtueHref("dashboard"));
+  };
 
   return (
     <View style={{ padding: 16, gap: 8 }}>
       <Text style={{ fontSize: 22, fontWeight: "700" }}>Finances</Text>
+      {ftue.isActive && ftue.currentStep === "reviewFinances" ? (
+        <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, gap: 8, borderColor: "#93c5fd", backgroundColor: "#eff6ff" }}>
+          <Text style={{ fontWeight: "700", color: "#1d4ed8" }}>{ftue.title}</Text>
+          <Text style={{ color: "#334155" }}>{ftue.description}</Text>
+          <Pressable onPress={handleContinueFtue} style={{ alignSelf: "flex-start", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#1d4ed8" }}>
+            <Text style={{ color: "white", fontWeight: "700" }}>{loading ? "Updating..." : "Continue to First Week"}</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {error ? <Text style={{ color: "#b91c1c" }}>{error}</Text> : null}
       <Text>Cash: ${finances.currentCash.toLocaleString()}</Text>
       <Text>Debt: ${finances.currentDebt.toLocaleString()}</Text>

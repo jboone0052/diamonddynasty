@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { Link, useLocalSearchParams } from "expo-router";
+import { Link, Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getPlayerHealthSnapshot, getWeeklyResultsSnapshot } from "@baseball-sim/game-core";
+import { getFtueSnapshot, getPlayerHealthSnapshot, getWeeklyResultsSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
+import { getFtueHref, getFtueRedirectScreen } from "../src/ftue";
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
@@ -82,11 +83,17 @@ function getHealthColors(label: string) {
 }
 
 export default function ResultsScreen() {
-  const { game } = useGameSessionStore();
+  const router = useRouter();
+  const { game, loading, acknowledgeFtueStep } = useGameSessionStore();
   const params = useLocalSearchParams<{ week?: string }>();
 
   if (!game) {
     return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
+  }
+  const redirectScreen = getFtueRedirectScreen(game, "results");
+  const ftue = getFtueSnapshot(game);
+  if (redirectScreen && ftue.currentStep !== "advanceWeek") {
+    return <Redirect href={getFtueHref(redirectScreen)} />;
   }
 
   const requestedWeek = typeof params.week === "string" ? Number(params.week) : undefined;
@@ -161,6 +168,11 @@ export default function ResultsScreen() {
   const awayTotals = userGame ? getTeamBattingTotals(userGame.awayTeamId) : { hits: 0, walks: 0, strikeouts: 0, homeRuns: 0 };
   const homeTotals = userGame ? getTeamBattingTotals(userGame.homeTeamId) : { hits: 0, walks: 0, strikeouts: 0, homeRuns: 0 };
 
+  const handleFinishTutorial = async () => {
+    await acknowledgeFtueStep("reviewResults");
+    router.replace("/");
+  };
+
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 14, backgroundColor: "#f8fafc" }}>
       <View style={{ gap: 4 }}>
@@ -169,6 +181,20 @@ export default function ResultsScreen() {
           Review your club&apos;s final first, then the box score, health updates, and the rest of the league.
         </Text>
       </View>
+
+      {ftue.isActive && ftue.currentStep === "reviewResults" ? (
+        <SectionCard title="Tutorial Recap">
+          <Text style={{ color: "#334155" }}>
+            The club opened with a win, and this results summary is where you review what happened on the field before planning the next week.
+          </Text>
+          <Text style={{ color: "#334155" }}>
+            From here on, the front office is yours. Use the dashboard, scouting, lineup, and finances screens in whatever order fits your season.
+          </Text>
+          <Pressable onPress={handleFinishTutorial} style={{ alignSelf: "flex-start", paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, backgroundColor: "#1d4ed8" }}>
+            <Text style={{ color: "white", fontWeight: "700" }}>{loading ? "Finishing Tutorial..." : "Finish Tutorial"}</Text>
+          </Pressable>
+        </SectionCard>
+      ) : null}
 
       {userGame?.result ? (
         <>
