@@ -9,6 +9,7 @@ export default function RootLayout() {
         <Stack.Screen name="intro" options={{ title: "Club Inheritance" }} />
         <Stack.Screen name="results" options={{ title: "Weekly Results" }} />
         <Stack.Screen name="roster" options={{ title: "Roster" }} />
+        <Stack.Screen name="scouting" options={{ title: "Scouting" }} />
         <Stack.Screen name="lineup" options={{ title: "Lineup" }} />
         <Stack.Screen name="standings" options={{ title: "Standings" }} />
         <Stack.Screen name="schedule" options={{ title: "Schedule" }} />
@@ -22,3 +23,4 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+

@@ -1,4 +1,5 @@
-import { GameState, Player, ScheduledGame, StandingsRow } from "./types/gameState";
+import { GameState, Player, ProspectReport, ScheduledGame, StandingsRow } from "./types/gameState";
+import { getStartingAnnualSalary } from "./actions/manageRoster";
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -216,3 +217,59 @@ export function getWeeklyResultsSnapshot(state: GameState, requestedWeek?: numbe
 }
 
 
+
+
+function isScoutableProspect(player: Player) {
+  return !player.currentTeamId && player.status === "freeAgent" && player.age <= 24;
+}
+
+function getProspectReportMap(reports: ProspectReport[]) {
+  return new Map(reports.map((report) => [report.playerId, report]));
+}
+
+export function getScoutingSnapshot(state: GameState, teamId = state.world.userTeamId) {
+  const department = state.scouting[teamId];
+  const reportMap = getProspectReportMap(department.prospectBoard);
+  const prospects = Object.values(state.players)
+    .filter((player) => isScoutableProspect(player))
+    .sort((left, right) => right.potential - left.potential || right.overall - left.overall || left.age - right.age)
+    .slice(0, 16)
+    .map((player) => {
+      const report = reportMap.get(player.id);
+      return {
+        player,
+        report,
+        isScouted: Boolean(report),
+        signingSalary: getStartingAnnualSalary(player.primaryPosition),
+      };
+    });
+
+  return {
+    department,
+    reports: [...department.prospectBoard],
+    availableProspects: prospects,
+    recommendedPitchers: prospects.filter((item) => item.player.primaryPosition === "SP" || item.player.primaryPosition === "RP").slice(0, 6),
+  };
+}
+
+export function getVisibleFreeAgentMarket(state: GameState, teamId = state.world.userTeamId) {
+  const department = state.scouting[teamId];
+  const reportMap = getProspectReportMap(department.prospectBoard);
+  return Object.values(state.players)
+    .filter((player) => !player.currentTeamId && player.status === "freeAgent")
+    .filter((player) => !isScoutableProspect(player) || reportMap.has(player.id))
+    .sort((left, right) => {
+      const leftReport = reportMap.get(left.id);
+      const rightReport = reportMap.get(right.id);
+      const leftValue = leftReport?.scoutedOverallEstimate ?? left.overall;
+      const rightValue = rightReport?.scoutedOverallEstimate ?? right.overall;
+      return rightValue - leftValue || right.potential - left.potential;
+    })
+    .slice(0, 20)
+    .map((player) => ({
+      player,
+      report: reportMap.get(player.id),
+      isProspect: isScoutableProspect(player),
+      signingSalary: getStartingAnnualSalary(player.primaryPosition),
+    }));
+}

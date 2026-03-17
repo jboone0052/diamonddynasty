@@ -9,6 +9,8 @@ export * from "./actions/setTicketPrice";
 export * from "./actions/markMailRead";
 export * from "./actions/completeIntro";
 export * from "./actions/expandStadiumCapacity";
+export * from "./actions/scoutProspect";
 export * from "./persistence/saveRepository";
 export * from "./queries";
 export * from "./actions/manageRoster";
+

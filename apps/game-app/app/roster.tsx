@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { getPlayerHealthSnapshot, getRosterSnapshot, getStartingAnnualSalary } from "@baseball-sim/game-core";
+import { getPlayerHealthSnapshot, getRosterSnapshot, getVisibleFreeAgentMarket } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
 
 function formatPayrollImpact(monthlyDelta: number) {
@@ -35,10 +35,7 @@ export default function RosterScreen() {
   if (!game) return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
 
   const snapshot = getRosterSnapshot(game);
-  const freeAgents = Object.values(game.players)
-    .filter((player) => !player.currentTeamId && player.status === "freeAgent")
-    .sort((a, b) => b.overall - a.overall)
-    .slice(0, 20);
+  const freeAgents = getVisibleFreeAgentMarket(game);
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
@@ -82,28 +79,38 @@ export default function RosterScreen() {
         );
       })}
 
-      <Text style={{ fontSize: 22, fontWeight: "700", marginTop: 8 }}>Free Agents</Text>
-      {freeAgents.length === 0 ? <Text>No free agents currently available.</Text> : null}
-      {freeAgents.map((player) => {
-        const health = getPlayerHealthSnapshot(game, player.id);
+      <Text style={{ fontSize: 22, fontWeight: "700", marginTop: 8 }}>Available Market</Text>
+      <Text style={{ color: "#475569" }}>Established free agents appear here automatically. Young prospects only appear after you scout them from the Scouting screen.</Text>
+      {freeAgents.length === 0 ? <Text>No visible free agents currently available.</Text> : null}
+      {freeAgents.map((item) => {
+        const health = getPlayerHealthSnapshot(game, item.player.id);
         const tone = getHealthColors(health.riskLabel);
+        const displayOverall = item.report?.scoutedOverallEstimate ?? item.player.overall;
+        const displayPotential = item.report?.scoutedPotentialEstimate ?? item.player.potential;
 
         return (
-          <View key={`fa-${player.id}`} style={{ borderWidth: 1, borderRadius: 8, padding: 12, gap: 6 }}>
+          <View key={`fa-${item.player.id}`} style={{ borderWidth: 1, borderRadius: 8, padding: 12, gap: 6 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
               <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ fontWeight: "700" }}>{player.fullName}</Text>
-                <Text>{player.primaryPosition} | Overall (OVR) {player.overall} | POT {player.potential}</Text>
+                <Text style={{ fontWeight: "700" }}>{item.player.fullName}</Text>
+                <Text>{item.player.primaryPosition} | {item.isProspect ? "Scouted estimate" : "Overall (OVR)"} {displayOverall} | POT {displayPotential}</Text>
               </View>
               <View style={{ borderRadius: 999, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: tone.backgroundColor }}>
                 <Text style={{ color: tone.color, fontWeight: "700" }}>{health.riskLabel}</Text>
               </View>
             </View>
-            <Text>Morale {player.morale} | Fatigue {player.fatigue}</Text>
-            <Text style={{ color: "#475569" }}>{health.factors.join(" | ")}</Text>
-            <Pressable onPress={() => signFreeAgent(player.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8, alignSelf: "flex-start" }}>
+            <Text>Morale {item.player.morale} | Fatigue {item.player.fatigue}</Text>
+            {item.report ? (
+              <>
+                <Text style={{ color: "#475569" }}>Scouting confidence {item.report.confidence}%</Text>
+                <Text style={{ color: "#475569" }}>{item.report.notes.join(" | ")}</Text>
+              </>
+            ) : (
+              <Text style={{ color: "#475569" }}>{health.factors.join(" | ")}</Text>
+            )}
+            <Pressable onPress={() => signFreeAgent(item.player.id)} style={{ padding: 8, borderWidth: 1, borderRadius: 8, alignSelf: "flex-start" }}>
               <Text>
-                Sign Player ({formatPayrollImpact(Math.round(getStartingAnnualSalary(player.primaryPosition) / 12))})
+                Sign Player ({formatPayrollImpact(Math.round(item.signingSalary / 12))})
               </Text>
             </Pressable>
           </View>

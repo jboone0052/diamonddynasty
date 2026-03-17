@@ -10,6 +10,7 @@ import {
   getTeamManagementHealthSnapshot,
   markMailRead as markMailReadAction,
   releasePlayer as releasePlayerAction,
+  scoutProspect as scoutProspectAction,
   signFreeAgent as signFreeAgentAction,
   setLineup as setLineupAction,
   setRotation as setRotationAction,
@@ -72,6 +73,7 @@ type GameSessionState = {
   expandStadiumCapacity: () => void;
   markMessageRead: (messageId: string) => void;
   releasePlayer: (playerId: string) => void;
+  scoutProspect: (playerId: string) => Promise<void>;
   signFreeAgent: (playerId: string) => void;
 };
 
@@ -288,6 +290,20 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
       set({ error: error instanceof Error ? error.message : "Failed to release player." });
     }
   },
+  scoutProspect: async (playerId) => {
+    const current = get().game;
+    if (!current) return;
+    const teamId = current.world.userTeamId;
+    set({ loading: true, error: null });
+    try {
+      const game = scoutProspectAction(current, teamId, playerId);
+      const saveId = await persistCurrentGame(game, get().selectedSaveId);
+      const saves = await repository.list();
+      set({ game, selectedSaveId: saveId, saves, loading: false, advanceWeekConfirmation: null });
+    } catch (error) {
+      set({ loading: false, error: error instanceof Error ? error.message : "Failed to scout player." });
+    }
+  },
   signFreeAgent: (playerId) => {
     const current = get().game;
     if (!current) return;
@@ -299,3 +315,5 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
     }
   },
 }));
+
+

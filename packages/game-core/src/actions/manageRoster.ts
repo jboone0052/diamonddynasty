@@ -11,6 +11,11 @@ function recalculatePayroll(state: GameState, teamId: string) {
   state.finances[teamId].payrollMonthly = payrollMonthly;
 }
 
+function isScoutableProspect(state: GameState, playerId: string) {
+  const player = state.players[playerId];
+  return Boolean(player && !player.currentTeamId && player.status === "freeAgent" && player.age <= 24);
+}
+
 function applyRosterDepthChart(team: Team, state: GameState) {
   const healthy = team.rosterPlayerIds.filter((playerId) => {
     const player = state.players[playerId];
@@ -147,3 +152,4 @@ export function signFreeAgent(state: GameState, teamId: string, playerId: string
   recalculatePayroll(next, teamId);
   return next;
 }
+
