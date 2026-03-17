@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createNewGame } from "../src/factories/createNewGame";
-import { releasePlayer, signFreeAgent } from "../src/actions/manageRoster";
+import { getStartingAnnualSalary, releasePlayer, signFreeAgent } from "../src/actions/manageRoster";
 
 describe("manageRoster", () => {
   it("releases a rostered player into free agency and updates payroll", () => {
@@ -21,22 +21,36 @@ describe("manageRoster", () => {
     expect(next.finances[teamId].payrollMonthly).toBeLessThan(startingPayroll);
   });
 
-  it("signs a free agent and adds a one-year contract", () => {
-    const game = createNewGame();
+  it("signs a visible veteran free agent and adds a one-year contract", () => {
+    const game = createNewGame("veteran-free-agent-seed");
     const teamId = game.world.userTeamId;
-    const playerId = game.teams[teamId].reservePlayerIds[0];
+    const player = Object.values(game.players).find((candidate) => !candidate.currentTeamId && candidate.status === "freeAgent" && candidate.age >= 25)!;
 
-    const released = releasePlayer(game, teamId, playerId);
-    const next = signFreeAgent(released, teamId, playerId);
+    const next = signFreeAgent(game, teamId, player.id);
 
-    expect(next.teams[teamId].rosterPlayerIds).toContain(playerId);
-    expect(next.players[playerId].currentTeamId).toBe(teamId);
-    expect(next.players[playerId].contractId).toBeDefined();
-    expect(next.players[playerId].status).toBe("active");
+    expect(next.teams[teamId].rosterPlayerIds).toContain(player.id);
+    expect(next.players[player.id].currentTeamId).toBe(teamId);
+    expect(next.players[player.id].contractId).toBeDefined();
+    expect(next.players[player.id].status).toBe("active");
 
-    const signedContract = next.contracts[next.players[playerId].contractId!];
-    expect(signedContract.playerId).toBe(playerId);
+    const signedContract = next.contracts[next.players[player.id].contractId!];
+    expect(signedContract.playerId).toBe(player.id);
     expect(signedContract.teamId).toBe(teamId);
     expect(signedContract.yearsTotal).toBe(1);
+  });
+
+  it("prices new signings in line with seeded roster contracts", () => {
+    const game = createNewGame("signing-salary-seed");
+    const teamId = game.world.userTeamId;
+    const rosterContracts = game.teams[teamId].rosterPlayerIds
+      .map((playerId) => game.players[playerId].contractId)
+      .filter(Boolean)
+      .map((contractId) => game.contracts[contractId!].annualSalary);
+    const averageRosterSalary = rosterContracts.reduce((sum, salary) => sum + salary, 0) / rosterContracts.length;
+    const unsignedPlayer = Object.values(game.players).find((player) => !player.currentTeamId && player.status === "freeAgent")!;
+    const projectedSalary = getStartingAnnualSalary(unsignedPlayer);
+
+    expect(projectedSalary).toBeGreaterThan(12000);
+    expect(projectedSalary).toBeLessThan(averageRosterSalary * 1.8);
   });
 });

@@ -1,4 +1,5 @@
-import { GameState, PlayerPosition, Team } from "../types/gameState";
+import { economyConfig } from "@baseball-sim/config";
+import { GameState, Player, Team } from "../types/gameState";
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -58,18 +59,19 @@ function applyRosterDepthChart(team: Team, state: GameState) {
   team.injuredPlayerIds = team.rosterPlayerIds.filter((playerId) => state.players[playerId].status === "injured");
 }
 
-export function getStartingAnnualSalary(position: PlayerPosition) {
-  switch (position) {
-    case "SP":
-      return 220000;
-    case "RP":
-      return 180000;
-    case "C":
-    case "SS":
-      return 160000;
-    default:
-      return 140000;
-  }
+export function getStartingAnnualSalary(player: Pick<Player, "overall" | "potential" | "age" | "primaryPosition">) {
+  const overallScale = Math.max(0.75, player.overall / 60);
+  const upsideGap = Math.max(0, player.potential - player.overall);
+  const upsideMultiplier = player.age <= 24 ? 0.92 + Math.min(0.14, upsideGap / 120) : 1;
+  const positionMultiplier = player.primaryPosition === "SP"
+    ? 1.08
+    : player.primaryPosition === "RP"
+      ? 0.97
+      : player.primaryPosition === "C" || player.primaryPosition === "SS"
+        ? 1.02
+        : 0.94;
+  const annualSalary = economyConfig.averagePayrollPerPlayerMonthly * 12 * overallScale * upsideMultiplier * positionMultiplier;
+  return Math.round(annualSalary / 100) * 100;
 }
 
 export function releasePlayer(state: GameState, teamId: string, playerId: string): GameState {
@@ -111,9 +113,12 @@ export function signFreeAgent(state: GameState, teamId: string, playerId: string
   const player = next.players[playerId];
   if (!player) throw new Error("Player not found.");
   if (player.currentTeamId) throw new Error("Player is already under contract.");
+  if (isScoutableProspect(next, playerId) && !next.scouting[teamId].prospectBoard.some((report) => report.playerId === playerId)) {
+    throw new Error("Scout this prospect before offering a contract.");
+  }
 
   const contractId = `contract_${teamId}_${playerId}_${next.world.currentWeek}`;
-  const annualSalary = getStartingAnnualSalary(player.primaryPosition);
+  const annualSalary = getStartingAnnualSalary(player);
   const expirationSeason = next.world.currentSeason + 1;
 
   next.contracts[contractId] = {
@@ -152,4 +157,3 @@ export function signFreeAgent(state: GameState, teamId: string, playerId: string
   recalculatePayroll(next, teamId);
   return next;
 }
-

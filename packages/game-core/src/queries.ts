@@ -240,7 +240,7 @@ export function getScoutingSnapshot(state: GameState, teamId = state.world.userT
         player,
         report,
         isScouted: Boolean(report),
-        signingSalary: getStartingAnnualSalary(player.primaryPosition),
+        signingSalary: getStartingAnnualSalary(player),
       };
     });
 
@@ -270,6 +270,7 @@ export function getVisibleFreeAgentMarket(state: GameState, teamId = state.world
       player,
       report: reportMap.get(player.id),
       isProspect: isScoutableProspect(player),
-      signingSalary: getStartingAnnualSalary(player.primaryPosition),
+      signingSalary: getStartingAnnualSalary(player),
     }));
 }
+
