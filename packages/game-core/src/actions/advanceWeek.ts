@@ -820,6 +820,9 @@ function settleWeeklyLedger(state: GameState) {
 export function advanceWeek(input: GameState): GameState {
   const state = clone(input);
   if (state.world.seasonStatus === "completed") {
+    if (state.seasonSummary?.promotion.promoted) {
+      return state;
+    }
     startNextSeason(state);
     return state;
   }
@@ -893,7 +896,6 @@ export function advanceWeek(input: GameState): GameState {
 
   return state;
 }
-
 
 
 

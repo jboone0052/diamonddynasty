@@ -234,7 +234,7 @@ describe("season progression", () => {
     expect(seasonExpenses).toBeGreaterThan(0);
   });
 
-  it("starts a new season when advancing after completion regardless of promotion", () => {
+  it("starts a new season when advancing after completion without promotion", () => {
     let game = createNewGame();
     for (let index = 0; index < game.world.weeksInSeason; index += 1) {
       game = advanceWeek(game);
@@ -242,7 +242,9 @@ describe("season progression", () => {
 
     const completedSeason = game.world.currentSeason;
     expect(game.world.seasonStatus).toBe("completed");
+    expect(game.seasonSummary).toBeDefined();
 
+    game.seasonSummary!.promotion.promoted = false;
     const nextSeason = advanceWeek(game);
 
     expect(nextSeason.world.currentSeason).toBe(completedSeason + 1);
@@ -262,6 +264,28 @@ describe("season progression", () => {
     const seasonExpenses = Object.values(userFinance.seasonExpenseBreakdown).reduce((sum, value) => sum + value, 0);
     expect(seasonRevenue).toBe(0);
     expect(seasonExpenses).toBe(0);
+  });
+
+  it("does not start a new season when advancing after completion with promotion", () => {
+    let game = createNewGame();
+    for (let index = 0; index < game.world.weeksInSeason; index += 1) {
+      game = advanceWeek(game);
+    }
+
+    expect(game.world.seasonStatus).toBe("completed");
+    expect(game.seasonSummary).toBeDefined();
+
+    game.seasonSummary!.promotion.promoted = true;
+    const completedSeason = game.world.currentSeason;
+    const completedWeek = game.world.currentWeek;
+    const completedDate = game.world.currentDate;
+
+    const afterAdvance = advanceWeek(game);
+
+    expect(afterAdvance.world.currentSeason).toBe(completedSeason);
+    expect(afterAdvance.world.currentWeek).toBe(completedWeek);
+    expect(afterAdvance.world.currentDate).toBe(completedDate);
+    expect(afterAdvance.world.seasonStatus).toBe("completed");
   });
 
   it("round-trips through serialization and local save repository", async () => {
