@@ -3,7 +3,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { getDashboardSnapshot, getLatestCompletedWeek, getTeamManagementHealthSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
 
-function NavButton({ href, label }: { href: "/results" | "/roster" | "/lineup" | "/standings" | "/schedule" | "/finances" | "/promotion" | "/inbox" | "/summary" | "/saves"; label: string }) {
+function NavButton({ href, label }: { href: "/results" | "/roster" | "/lineup" | "/standings" | "/schedule" | "/finances" | "/promotion" | "/promotion-plan" | "/inbox" | "/summary" | "/saves"; label: string }) {
   return (
     <Link href={href} asChild>
       <Pressable style={{ padding: 12, borderWidth: 1, borderRadius: 8 }}>
@@ -169,6 +169,7 @@ export default function HomeScreen() {
       <NavButton href="/inbox" label="Inbox" />
       <NavButton href="/saves" label="Save / Load" />
       {dashboard.seasonSummary ? <NavButton href="/summary" label="Season Summary" /> : null}
+      {dashboard.seasonSummary && !dashboard.seasonSummary.promotion.promoted ? <NavButton href="/promotion-plan" label="Promotion Action Plan" /> : null}
     </ScrollView>
   );
 }
