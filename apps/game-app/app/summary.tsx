@@ -1,4 +1,5 @@
-import { ScrollView, Text, View } from "react-native";
+import { Link } from "expo-router";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { getStandingsSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
 
@@ -134,6 +135,21 @@ export default function SummaryScreen() {
           );
         })}
       </SectionCard>
+
+
+
+      {!summary.promotion.promoted ? (
+        <SectionCard title="Missed Promotion? Next Steps">
+          <Text style={{ color: "#334155" }}>
+            Get a focused checklist with direct actions to improve your chances next season.
+          </Text>
+          <Link href="/promotion-plan" asChild>
+            <Pressable style={{ alignSelf: "flex-start", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: "#0f172a", backgroundColor: "#0f172a" }}>
+              <Text style={{ color: "white", fontWeight: "700" }}>Open Promotion Action Plan</Text>
+            </Pressable>
+          </Link>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Financial Outcome">
         <StatRow label="Closing cash" value={formatCurrency(finances.currentCash)} valueTone={finances.currentCash > 0 ? "#166534" : "#0f172a"} />
