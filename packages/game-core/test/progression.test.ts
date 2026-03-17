@@ -199,6 +199,13 @@ describe("season progression", () => {
     expect(game.world.seasonStatus).toBe("completed");
     expect(game.seasonSummary).toBeDefined();
     expect(getPromotionStatus(game).seasonSummary).toBeDefined();
+
+    const userFinance = game.finances[game.world.userTeamId];
+    const seasonRevenue = Object.values(userFinance.seasonRevenueBreakdown).reduce((sum, value) => sum + value, 0);
+    const seasonExpenses = Object.values(userFinance.seasonExpenseBreakdown).reduce((sum, value) => sum + value, 0);
+
+    expect(seasonRevenue).toBeGreaterThan(0);
+    expect(seasonExpenses).toBeGreaterThan(0);
   });
 
   it("round-trips through serialization and local save repository", async () => {
