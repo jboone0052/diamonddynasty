@@ -7,6 +7,10 @@ function formatBattingAverage(hits: number, atBats: number) {
   return `${(hits / atBats).toFixed(3)}`.replace("0.", ".");
 }
 
+function formatPitcherRecord(wins: number, losses: number) {
+  return `${wins}-${losses}`;
+}
+
 function getHealthColors(label: string) {
   switch (label) {
     case "Injured":
@@ -131,7 +135,9 @@ export default function LineupScreen() {
                 <Text style={{ color: tone.color, fontWeight: "700" }}>{health.riskLabel}</Text>
               </View>
             </View>
-            <Text>Fatigue {player.fatigue} | Morale {player.morale}</Text>
+            <Text>
+              Fatigue {player.fatigue} | Morale {player.morale} | W-L {formatPitcherRecord(player.seasonStats.wins, player.seasonStats.losses)}
+            </Text>
             <Text style={{ color: health.activeInjury ? "#991b1b" : "#475569" }}>
               {health.activeInjury ? health.recoverySummary : health.factors.join(" | ")}
             </Text>

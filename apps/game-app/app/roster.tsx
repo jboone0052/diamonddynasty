@@ -24,7 +24,7 @@ function getHealthColors(label: string) {
 
 function renderSeasonLine(player: ReturnType<typeof getRosterSnapshot>["roster"][number]) {
   if (player.primaryPosition === "SP" || player.primaryPosition === "RP") {
-    return `${player.seasonStats.inningsPitched.toFixed(1)} IP | ${player.seasonStats.earnedRuns} ER | ${player.seasonStats.strikeoutsPitched} SO | ${player.seasonStats.walksAllowed} BB`;
+    return `${player.seasonStats.wins}-${player.seasonStats.losses} W-L | ${player.seasonStats.inningsPitched.toFixed(1)} IP | ${player.seasonStats.earnedRuns} ER | ${player.seasonStats.strikeoutsPitched} SO | ${player.seasonStats.walksAllowed} BB`;
   }
 
   return `${player.seasonStats.games} G | ${player.seasonStats.hits} H | ${player.seasonStats.homeRuns} HR | AVG ${player.seasonStats.battingAverage.toFixed(3)}`;
