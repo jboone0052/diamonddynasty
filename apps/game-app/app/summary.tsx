@@ -1,4 +1,4 @@
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { getStandingsSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
@@ -50,6 +50,7 @@ export default function SummaryScreen() {
   const netSettlement = totalRevenue - totalExpenses;
   const latestRevenue = Object.values(finances.lastMonthRevenueBreakdown).reduce((sum, value) => sum + value, 0);
   const latestExpenses = Object.values(finances.lastMonthExpenseBreakdown).reduce((sum, value) => sum + value, 0);
+  const canStartNextSeason = !summary.promotion.promoted;
   const promotionChecks = [
     {
       label: `Finish top ${league.promotionSpots}`,
@@ -166,4 +167,5 @@ export default function SummaryScreen() {
     </ScrollView>
   );
 }
+
 

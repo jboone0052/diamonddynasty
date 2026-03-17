@@ -99,12 +99,20 @@ export default function HomeScreen() {
   const health = getTeamManagementHealthSnapshot(game);
   const highRiskLineupCount = health.lineupWarnings.filter((warning) => warning.riskLabel === "High").length;
   const highRiskRotationCount = health.rotationWarnings.filter((warning) => warning.riskLabel === "High").length;
+  const seasonSummary = game.seasonSummary;
+  const canStartNextSeason = Boolean(game.world.seasonStatus === "completed" && seasonSummary && !seasonSummary.promotion.promoted);
   const nextOpponent = dashboard.nextGame
     ? `${game.teams[dashboard.nextGame.awayTeamId].nickname} @ ${game.teams[dashboard.nextGame.homeTeamId].nickname}`
     : "Season complete";
 
   const handleAdvanceWeek = async () => {
-    if (loading || game.world.seasonStatus === "completed") {
+    if (loading || (game.world.seasonStatus === "completed" && !canStartNextSeason)) {
+      return;
+    }
+
+    if (canStartNextSeason) {
+      await advanceWeek();
+      router.replace("/");
       return;
     }
 
@@ -116,6 +124,7 @@ export default function HomeScreen() {
 
     router.push({ pathname: "/results", params: { week: String(completedWeek) } });
   };
+
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 12, backgroundColor: "#f8fafc" }}>
@@ -152,7 +161,7 @@ export default function HomeScreen() {
 
       <Pressable onPress={handleAdvanceWeek} style={{ padding: 12, backgroundColor: "#1f2937", borderRadius: 8 }}>
         <Text style={{ color: "white", fontWeight: "600" }}>
-          {loading ? "Advancing..." : game.world.seasonStatus === "completed" ? "Season Complete" : advanceWeekConfirmation ? "Advance Anyway" : "Advance Week"}
+          {loading ? "Advancing..." : canStartNextSeason ? "Start Next Season" : game.world.seasonStatus === "completed" ? "Season Complete" : advanceWeekConfirmation ? "Advance Anyway" : "Advance Week"}
         </Text>
       </Pressable>
       <Pressable onPress={saveGame} style={{ padding: 12, borderWidth: 1, borderRadius: 8, borderColor: "#cbd5e1", backgroundColor: "white" }}>
@@ -174,5 +183,7 @@ export default function HomeScreen() {
     </ScrollView>
   );
 }
+
+
 
 

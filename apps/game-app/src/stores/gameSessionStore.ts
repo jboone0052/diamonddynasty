@@ -188,10 +188,12 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
     const current = get().game;
     if (!current) return false;
 
-    const confirmation = buildAdvanceWeekConfirmation(current);
-    if (!force && confirmation) {
-      set({ advanceWeekConfirmation: confirmation, error: confirmation.message });
-      return false;
+    if (current.world.seasonStatus !== "completed") {
+      const confirmation = buildAdvanceWeekConfirmation(current);
+      if (!force && confirmation) {
+        set({ advanceWeekConfirmation: confirmation, error: confirmation.message });
+        return false;
+      }
     }
 
     set({ loading: true, error: null, advanceWeekConfirmation: null });
@@ -315,5 +317,6 @@ export const useGameSessionStore = create<GameSessionState>((set, get) => ({
     }
   },
 }));
+
 
 
