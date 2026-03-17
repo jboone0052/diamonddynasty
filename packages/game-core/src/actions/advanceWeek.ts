@@ -19,6 +19,78 @@ function addDays(date: string, days: number) {
   return next.toISOString().slice(0, 10);
 }
 
+function createEmptyStats() {
+  return {
+    games: 0,
+    atBats: 0,
+    runs: 0,
+    hits: 0,
+    runsBattedIn: 0,
+    walks: 0,
+    strikeouts: 0,
+    doubles: 0,
+    triples: 0,
+    homeRuns: 0,
+    battingAverage: 0,
+    stolenBases: 0,
+    inningsPitched: 0,
+    wins: 0,
+    losses: 0,
+    saves: 0,
+    hitsAllowed: 0,
+    earnedRuns: 0,
+    walksAllowed: 0,
+    strikeoutsPitched: 0,
+    homeRunsAllowed: 0,
+  };
+}
+
+function createRevenueBreakdown() {
+  return {
+    ticketSales: 0,
+    sponsorships: 0,
+    merchandise: 0,
+    playoffRevenue: 0,
+    transferFees: 0,
+    other: 0,
+  };
+}
+
+function createExpenseBreakdown() {
+  return {
+    payroll: 0,
+    staff: 0,
+    travel: 0,
+    upkeep: 0,
+    scouting: 0,
+    marketing: 0,
+    debtService: 0,
+    other: 0,
+  };
+}
+
+function generateRoundRobinWeeks(teamIds: string[]) {
+  const rotation = [...teamIds];
+  const rounds: Array<Array<[string, string]>> = [];
+
+  for (let round = 0; round < teamIds.length - 1; round += 1) {
+    const week: Array<[string, string]> = [];
+    for (let i = 0; i < rotation.length / 2; i += 1) {
+      const home = rotation[i];
+      const away = rotation[rotation.length - 1 - i];
+      week.push(round % 2 === 0 ? [home, away] : [away, home]);
+    }
+    rounds.push(week);
+    const fixed = rotation[0];
+    const rest = rotation.slice(1);
+    rest.unshift(rest.pop()!);
+    rotation.splice(0, rotation.length, fixed, ...rest);
+  }
+
+  const mirrored = rounds.map((week) => week.map(([home, away]) => [away, home] as [string, string]));
+  return [...rounds, ...mirrored];
+}
+
 function syncTeamFinances(state: GameState) {
   Object.values(state.teams).forEach((team) => {
     const finance = state.finances[team.id];
@@ -610,6 +682,93 @@ function finalizeSeason(state: GameState) {
   state.mailbox.unreadCount = state.mailbox.messages.filter((message) => !message.isRead).length;
 }
 
+function startNextSeason(state: GameState) {
+  const nextSeason = state.world.currentSeason + 1;
+  const seasonStartDate = addDays(state.world.currentDate, 7);
+
+  const schedule: Record<string, ScheduledGame> = {};
+  let gameCounter = 1;
+  let maxWeeks = 0;
+
+  Object.values(state.leagues).forEach((league) => {
+    const weeks = generateRoundRobinWeeks(league.teamIds);
+    maxWeeks = Math.max(maxWeeks, weeks.length);
+    weeks.forEach((pairings, index) => {
+      const week = index + 1;
+      pairings.forEach(([homeTeamId, awayTeamId]) => {
+        const id = `game_${nextSeason}_${String(gameCounter).padStart(4, "0")}`;
+        schedule[id] = {
+          id,
+          leagueId: league.id,
+          season: nextSeason,
+          date: addDays(seasonStartDate, (week - 1) * 7),
+          week,
+          homeTeamId,
+          awayTeamId,
+          status: "scheduled",
+          weather: "Clear",
+        };
+        gameCounter += 1;
+      });
+    });
+
+    state.standings[league.id].rows = league.teamIds.map((teamId) => ({
+      teamId,
+      wins: 0,
+      losses: 0,
+      winPct: 0,
+      runsFor: 0,
+      runsAgainst: 0,
+      runDifferential: 0,
+      streak: 0,
+      averageAttendance: 0,
+    }));
+    state.standings[league.id].lastUpdatedDate = seasonStartDate;
+  });
+
+  state.schedule = schedule;
+  state.world.currentSeason = nextSeason;
+  state.world.currentWeek = 1;
+  state.world.currentDate = seasonStartDate;
+  state.world.currentPhase = "regularSeason";
+  state.world.weeksInSeason = maxWeeks;
+  state.world.seasonStatus = "inProgress";
+  state.seasonSummary = undefined;
+  state.story.seasonResultMessage = undefined;
+
+  Object.values(state.finances).forEach((finance) => {
+    finance.lastMonthRevenueBreakdown = createRevenueBreakdown();
+    finance.lastMonthExpenseBreakdown = createExpenseBreakdown();
+    finance.seasonRevenueBreakdown = createRevenueBreakdown();
+    finance.seasonExpenseBreakdown = createExpenseBreakdown();
+  });
+
+  Object.values(state.players).forEach((player) => {
+    if (player.status !== "retired") {
+      player.status = player.currentTeamId ? "active" : "freeAgent";
+    }
+    player.seasonStats = createEmptyStats();
+    player.fatigue = clampFatigue(player.fatigue * 0.35);
+  });
+
+  Object.values(state.teams).forEach((team) => {
+    team.injuredPlayerIds = [];
+    team.rotation.nextStarterIndex = 0;
+  });
+
+  state.injuries = {};
+  state.mailbox.messages.unshift({
+    id: `mail_new_season_${nextSeason}`,
+    date: seasonStartDate,
+    sender: "League Commissioner",
+    subject: `Season ${nextSeason} kickoff`,
+    body: "A new season is underway. Promotion status from last year will not block your next campaign.",
+    category: "league",
+    isRead: false,
+  });
+  state.mailbox.unreadCount = state.mailbox.messages.filter((message) => !message.isRead).length;
+}
+
 function processFinances(state: GameState, game: ScheduledGame) {
   const result = game.result!;
   const homeFinance = state.finances[game.homeTeamId];
@@ -661,6 +820,7 @@ function settleWeeklyLedger(state: GameState) {
 export function advanceWeek(input: GameState): GameState {
   const state = clone(input);
   if (state.world.seasonStatus === "completed") {
+    startNextSeason(state);
     return state;
   }
 
@@ -733,7 +893,6 @@ export function advanceWeek(input: GameState): GameState {
 
   return state;
 }
-
 
 
 
