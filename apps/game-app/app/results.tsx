@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Link, Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useRef, type ReactNode } from "react";
+import { Link, Redirect, useLocalSearchParams } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { getFtueSnapshot, getPlayerHealthSnapshot, getWeeklyResultsSnapshot } from "@baseball-sim/game-core";
 import { useGameSessionStore } from "../src/stores/gameSessionStore";
@@ -83,9 +83,9 @@ function getHealthColors(label: string) {
 }
 
 export default function ResultsScreen() {
-  const router = useRouter();
   const { game, loading, acknowledgeFtueStep } = useGameSessionStore();
   const params = useLocalSearchParams<{ week?: string }>();
+  const autoAcknowledgedFtue = useRef(false);
 
   if (!game) {
     return <View style={{ padding: 16 }}><Text>No active save.</Text></View>;
@@ -168,10 +168,24 @@ export default function ResultsScreen() {
   const awayTotals = userGame ? getTeamBattingTotals(userGame.awayTeamId) : { hits: 0, walks: 0, strikeouts: 0, homeRuns: 0 };
   const homeTotals = userGame ? getTeamBattingTotals(userGame.homeTeamId) : { hits: 0, walks: 0, strikeouts: 0, homeRuns: 0 };
 
-  const handleFinishTutorial = async () => {
-    await acknowledgeFtueStep("reviewResults");
-    router.replace("/");
-  };
+  useEffect(() => {
+    if (!snapshot) {
+      autoAcknowledgedFtue.current = false;
+      return;
+    }
+
+    if (!ftue.isActive || ftue.currentStep !== "reviewResults") {
+      autoAcknowledgedFtue.current = false;
+      return;
+    }
+
+    if (autoAcknowledgedFtue.current) {
+      return;
+    }
+
+    autoAcknowledgedFtue.current = true;
+    void acknowledgeFtueStep("reviewResults");
+  }, [acknowledgeFtueStep, ftue.currentStep, ftue.isActive, snapshot]);
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 14, backgroundColor: "#f8fafc" }}>
@@ -190,9 +204,9 @@ export default function ResultsScreen() {
           <Text style={{ color: "#334155" }}>
             From here on, the front office is yours. Use the dashboard, scouting, lineup, and finances screens in whatever order fits your season.
           </Text>
-          <Pressable onPress={handleFinishTutorial} style={{ alignSelf: "flex-start", paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, backgroundColor: "#1d4ed8" }}>
-            <Text style={{ color: "white", fontWeight: "700" }}>{loading ? "Finishing Tutorial..." : "Finish Tutorial"}</Text>
-          </Pressable>
+          <Text style={{ color: "#64748b" }}>
+            {loading ? "Unlocking the full front office..." : "Tutorial complete. The full front office is now unlocked."}
+          </Text>
         </SectionCard>
       ) : null}
 
