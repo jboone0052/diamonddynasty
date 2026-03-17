@@ -32,6 +32,32 @@ describe("season progression", () => {
   });
 
 
+  it("tracks pitcher win-loss records from completed games", () => {
+    const game = createNewGame();
+    const next = advanceWeek(game);
+    const completedGames = Object.values(next.schedule).filter((scheduledGame) => scheduledGame.week === 1 && scheduledGame.status === "completed");
+    const winsByPitcher = new Map<string, number>();
+    const lossesByPitcher = new Map<string, number>();
+
+    completedGames.forEach((scheduledGame) => {
+      const result = scheduledGame.result!;
+      if (result.winningPitcherId) {
+        winsByPitcher.set(result.winningPitcherId, (winsByPitcher.get(result.winningPitcherId) ?? 0) + 1);
+      }
+      if (result.losingPitcherId) {
+        lossesByPitcher.set(result.losingPitcherId, (lossesByPitcher.get(result.losingPitcherId) ?? 0) + 1);
+      }
+    });
+
+    winsByPitcher.forEach((wins, pitcherId) => {
+      expect(next.players[pitcherId].seasonStats.wins).toBe(wins);
+    });
+    lossesByPitcher.forEach((losses, pitcherId) => {
+      expect(next.players[pitcherId].seasonStats.losses).toBe(losses);
+    });
+  });
+
+
   it("persists batting stats like hits, homers, walks, strikeouts, and batting average", () => {
     const game = createNewGame();
     const next = advanceWeek(game);
