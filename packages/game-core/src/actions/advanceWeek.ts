@@ -640,6 +640,13 @@ function settleWeeklyLedger(state: GameState) {
     finance.lastMonthExpenseBreakdown.marketing += Math.round(finance.marketingBudgetMonthly / 4);
     finance.lastMonthExpenseBreakdown.debtService += Math.round(finance.currentDebt * economyConfig.debtServiceRateWeekly);
 
+    Object.entries(finance.lastMonthRevenueBreakdown).forEach(([key, value]) => {
+      finance.seasonRevenueBreakdown[key as keyof typeof finance.seasonRevenueBreakdown] += value;
+    });
+    Object.entries(finance.lastMonthExpenseBreakdown).forEach(([key, value]) => {
+      finance.seasonExpenseBreakdown[key as keyof typeof finance.seasonExpenseBreakdown] += value;
+    });
+
     const totalRevenue = Object.values(finance.lastMonthRevenueBreakdown).reduce((sum, value) => sum + value, 0);
     const totalExpenses = Object.values(finance.lastMonthExpenseBreakdown).reduce((sum, value) => sum + value, 0);
     finance.currentCash += totalRevenue - totalExpenses;
@@ -726,7 +733,6 @@ export function advanceWeek(input: GameState): GameState {
 
   return state;
 }
-
 
 
 
