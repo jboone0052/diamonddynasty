@@ -234,6 +234,36 @@ describe("season progression", () => {
     expect(seasonExpenses).toBeGreaterThan(0);
   });
 
+  it("starts a new season when advancing after completion regardless of promotion", () => {
+    let game = createNewGame();
+    for (let index = 0; index < game.world.weeksInSeason; index += 1) {
+      game = advanceWeek(game);
+    }
+
+    const completedSeason = game.world.currentSeason;
+    expect(game.world.seasonStatus).toBe("completed");
+
+    const nextSeason = advanceWeek(game);
+
+    expect(nextSeason.world.currentSeason).toBe(completedSeason + 1);
+    expect(nextSeason.world.currentWeek).toBe(1);
+    expect(nextSeason.world.seasonStatus).toBe("inProgress");
+    expect(nextSeason.world.currentPhase).toBe("regularSeason");
+    expect(nextSeason.seasonSummary).toBeUndefined();
+
+    const standings = nextSeason.standings[nextSeason.teams[nextSeason.world.userTeamId].leagueId].rows;
+    standings.forEach((row) => {
+      expect(row.wins).toBe(0);
+      expect(row.losses).toBe(0);
+    });
+
+    const userFinance = nextSeason.finances[nextSeason.world.userTeamId];
+    const seasonRevenue = Object.values(userFinance.seasonRevenueBreakdown).reduce((sum, value) => sum + value, 0);
+    const seasonExpenses = Object.values(userFinance.seasonExpenseBreakdown).reduce((sum, value) => sum + value, 0);
+    expect(seasonRevenue).toBe(0);
+    expect(seasonExpenses).toBe(0);
+  });
+
   it("round-trips through serialization and local save repository", async () => {
     const repository = createLocalSaveRepository();
     const game = createNewGame();
@@ -244,6 +274,5 @@ describe("season progression", () => {
     expect(loaded.meta.saveName).toBe("Test Save");
   });
 });
-
 
 
